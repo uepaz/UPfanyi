@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<ScrollPane xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.upfanyi.controller.SettingsController"
+      fitToWidth="true"
+      fitToHeight="true"
+      styleClass="side-panel-scroll">
+
+    <VBox spacing="8" styleClass="side-panel-content">
+        <padding>
+            <Insets top="8" right="8" bottom="8" left="8"/>
+        </padding>
+
+        <!-- 常规设置 -->
+        <TitledPane text="%settings.general" expanded="false">
+            <VBox spacing="6">
+                <padding>
+                    <Insets top="6" right="6" bottom="6" left="6"/>
+                </padding>
+
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="%settings.language" minWidth="70"/>
+                    <ComboBox fx:id="languageComboBox" prefWidth="100"/>
+                </HBox>
+
+                <CheckBox fx:id="alwaysOnTopCheckBox" text="%tray.always_on_top"/>
+                <CheckBox fx:id="minimizeToTrayCheckBox" text="%tray.minimize_to_tray"/>
+                <CheckBox fx:id="clipboardMonitorCheckBox" text="%tray.clipboard_monitor"/>
+                <CheckBox fx:id="autoTranslateCheckBox" text="%settings.auto_translate"/>
+
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="%settings.clipboard_min_length" minWidth="70"/>
+                    <Spinner fx:id="clipboardMinLengthSpinner" prefWidth="60">
+                        <valueFactory>
+                            <SpinnerValueFactory.IntegerSpinnerValueFactory min="1" max="100" initialValue="1"/>
+                        </valueFactory>
+                    </Spinner>
+                </HBox>
+            </VBox>
+        </TitledPane>
+
+        <!-- API配置 - 动态生成 -->
+        <TitledPane text="%settings.api_config" expanded="false">
+            <ScrollPane fitToWidth="true" fitToHeight="true" styleClass="side-panel-scroll">
+                <VBox fx:id="apiConfigContainer" spacing="4">
+                    <padding>
+                        <Insets top="6" right="6" bottom="6" left="6"/>
+                    </padding>
+                </VBox>
+            </ScrollPane>
+        </TitledPane>
+
+        <!-- 按钮 -->
+        <HBox spacing="8" alignment="CENTER_RIGHT">
+            <Button fx:id="saveButton" text="%settings.save" onAction="#handleSave" styleClass="primary-button"/>
+            <Button fx:id="cancelButton" text="%settings.cancel" onAction="#handleCancel"/>
+        </HBox>
+    </VBox>
+</ScrollPane>
