@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.upfanyi.controller.SidePanelController"
+      styleClass="side-panel"
+      spacing="0">
+
+    <!-- 顶部标题栏 -->
+    <HBox styleClass="panel-header" alignment="CENTER_LEFT">
+        <padding>
+            <Insets top="10" right="12" bottom="10" left="12"/>
+        </padding>
+        <Label fx:id="panelTitle" styleClass="panel-title" HBox.hgrow="ALWAYS"/>
+    </HBox>
+
+    <!-- 内容区域 -->
+    <StackPane fx:id="panelContent" VBox.vgrow="ALWAYS"/>
+</VBox>
