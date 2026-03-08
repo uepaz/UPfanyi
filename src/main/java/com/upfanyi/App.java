@@ -58,6 +58,10 @@ public class App extends Application {
         ViewManager viewManager = ViewManager.getInstance();
         Scene scene = viewManager.loadMainScene();
 
+        // 存储 MainController 引用到 scene 的 userData
+        Object controller = viewManager.getController("main");
+        scene.setUserData(controller);
+
         // 设置舞台属性
         stage.setTitle(I18nUtil.get("app.title"));
         stage.setScene(scene);
@@ -119,9 +123,13 @@ public class App extends Application {
      */
     public static void showMainWindow() {
         if (primaryStage != null) {
-            primaryStage.show();
-            primaryStage.toFront();
-            primaryStage.requestFocus();
+            Platform.runLater(() -> {
+                primaryStage.show();
+                primaryStage.setIconified(false);
+                primaryStage.toFront();
+                primaryStage.requestFocus();
+                primaryStage.setAlwaysOnTop(AppConfig.getInstance().isAlwaysOnTop());
+            });
         }
     }
 

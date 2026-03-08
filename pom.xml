@@ -213,6 +213,21 @@
                         <goals><goal>exec</goal></goals>
                         <configuration>
                             <executable>jpackage</executable>
+                            <!-- 
+                                jpackage 打包配置参数说明：
+                                name: 应用程序名称
+                                input: JAR 文件输入目录，使用 Maven 构建输出目录
+                                main-jar: 主 JAR 文件名，使用 Maven 最终构建名称
+                                main-class: 主类全限定名，指定应用启动入口
+                                type: 安装包类型，exe 表示 Windows 安装程序
+                                dest: 安装包输出目录
+                                win-dir-chooser: 启用安装目录选择对话框
+                                win-menu: 在开始菜单创建快捷方式
+                                win-shortcut: 在桌面创建快捷方式
+                                app-version: 应用程序版本号，使用 Maven 项目版本
+                                win-per-user-install: 允许每用户安装模式
+                                win-shortcut-prompt: 安装时提示是否创建快捷方式
+                            -->
                             <arguments>
                                 <argument>--name</argument><argument>UPfanyi</argument>
                                 <argument>--input</argument><argument>${project.build.directory}</argument>
@@ -223,6 +238,9 @@
                                 <argument>--win-dir-chooser</argument>
                                 <argument>--win-menu</argument>
                                 <argument>--win-shortcut</argument>
+                                <argument>--app-version</argument><argument>${project.version}</argument>
+                                <argument>--win-per-user-install</argument>
+                                <argument>--win-shortcut-prompt</argument>
                             </arguments>
                         </configuration>
                     </execution>

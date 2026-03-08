@@ -28,6 +28,7 @@ replay_pid*
 # ==========================
 # IntelliJ IDEA
 .idea/
+.claude/
 *.iml
 *.iws
 out/
