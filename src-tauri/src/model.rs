@@ -4,6 +4,13 @@ pub const OFFICIAL_AI_WEBSITE: &str = "https://uptoken.top";
 pub const OFFICIAL_AI_CHANNEL_ID: &str = "upfanyi";
 pub const OFFICIAL_AI_CHANNEL_NAME: &str = "UP翻译官方 AI";
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetLanguage {
+    pub language: String,
+    pub revision: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {

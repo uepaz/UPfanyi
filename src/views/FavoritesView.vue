@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import Notice from '../components/Notice.vue'
 import RecordPagination from '../components/RecordPagination.vue'
+import RecordTime from '../components/RecordTime.vue'
 import ConfirmAction from '../components/ConfirmAction.vue'
 import { useRecords } from '../composables/useRecords'
 import { useI18n } from '../i18n'
@@ -157,13 +158,14 @@ async function exportAll() {
             :aria-pressed="selected?.id === item.id"
             @click="selected = item"
           >
-            <strong>{{ item.word }}</strong
-            ><span>{{ item.translation }}</span
-            ><small>{{
-              noteDrafts[item.id] !== undefined && noteDrafts[item.id] !== (item.note ?? '')
-                ? t('unsaved')
-                : item.note || item.createTime
-            }}</small>
+            <strong>{{ item.word }}</strong>
+            <span>{{ item.translation }}</span>
+            <small
+              v-if="noteDrafts[item.id] !== undefined && noteDrafts[item.id] !== (item.note ?? '')"
+              >{{ t('unsaved') }}</small
+            >
+            <small v-else-if="item.note">{{ item.note }}</small>
+            <small v-else><RecordTime :timestamp="item.createTime" /></small>
           </button>
         </div>
         <RecordPagination
@@ -181,8 +183,8 @@ async function exportAll() {
         </div>
         <template v-else
           ><header class="detail-heading">
-            <span class="record-badge">{{ t('favorites') }}</span
-            ><small>{{ selected.createTime }}</small>
+            <span class="record-badge">{{ t('favorites') }}</span>
+            <small><RecordTime :timestamp="selected.createTime" /></small>
           </header>
           <div class="detail-text">
             <label>{{ t('source') }}</label>

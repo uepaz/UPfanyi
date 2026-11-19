@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { desktop } from '../services/desktop'
+import { messageForLocale, setLocale } from '../i18n'
 import { UPFANYI_AI_ENDPOINT } from '../services/aiConfig'
 import { mount, flushPromises, DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import SettingsView from './SettingsView.vue'
@@ -33,7 +34,6 @@ vi.mock('../services/desktop', () => ({
       'deleteFavorite',
       'exportFavorites',
       'copyText',
-      'onClipboard',
       'onNavigate',
     ].map((key) => [key, vi.fn()]),
   ),
@@ -77,6 +77,53 @@ async function cancelDialog() {
 }
 
 describe('settings snapshots', () => {
+  it.each(['zh_CN', 'en_US'])(
+    'keeps only the prompt guidance below idle official AI fields in %s',
+    async (locale) => {
+      setLocale(locale)
+      const wrapper = track(mount(SettingsView, { props: { data: officialBootstrap() } }))
+      const t = (key: string) => messageForLocale(locale, key)
+      await button(wrapper, t('ai')).trigger('click')
+      const hints = wrapper
+        .get('.ai-card')
+        .findAll('small, p.helper')
+        .map((element) => element.text())
+        .filter((text) => text !== t('required') && text !== t('optional'))
+      expect(hints).toEqual([t('aiHint')])
+    },
+  )
+  it.each(['zh_CN', 'en_US'])(
+    'places the connection test and its feedback before the prompt in %s',
+    async (locale) => {
+      setLocale(locale)
+      const t = (key: string) => messageForLocale(locale, key)
+      const wrapper = track(mount(SettingsView, { props: { data: officialBootstrap() } }))
+      await button(wrapper, t('ai')).trigger('click')
+      const card = wrapper.get('.ai-card')
+      const test = button(wrapper, t('connectionTest'))
+      const prompt = card.get('#ai-system-prompt')
+      const controls = Array.from(
+        card.element.querySelectorAll<HTMLElement>('input, button, textarea'),
+      ).filter((element) => element.tabIndex >= 0 && !element.matches(':disabled'))
+      expect(controls.slice(-4)).toEqual([
+        card.get('#ai-model').element,
+        button(wrapper, t('loadModels')).element,
+        test.element,
+        prompt.element,
+      ])
+      expect(card.get('#' + prompt.attributes('aria-describedby')).text()).toBe(t('aiHint'))
+
+      vi.mocked(desktop.testAiConnection)
+        .mockResolvedValueOnce(translation('test', 'fixture-ok'))
+        .mockRejectedValueOnce(new Error('fixture-error'))
+      await test.trigger('click')
+      await flushPromises()
+      expect(card.get('.test-connection button + [role="status"]').text()).toContain('fixture-ok')
+      await test.trigger('click')
+      await flushPromises()
+      expect(card.get('.test-connection button + [role="alert"]').text()).toContain('fixture-error')
+    },
+  )
   it('records only the selected shortcut and stops pending capture during explicit save', async () => {
     const original = bootstrap()
     original.settings.clipboardMonitor = true
@@ -164,6 +211,7 @@ describe('settings snapshots', () => {
     expect(wrapper.find('#settings-target-lang').exists()).toBe(false)
   })
   it('retains draft values between sections and shows save failures beside the save controls', async () => {
+    vi.useFakeTimers()
     vi.mocked(desktop.saveSettings).mockRejectedValue(new Error('disk full'))
     const data = bootstrap()
     Object.assign(data.settings, {
@@ -196,6 +244,7 @@ describe('settings snapshots', () => {
       alwaysOnTop: true,
     })
     expect(activeConfig(call[1]).apiKey).toBe('new-secret')
+    await vi.advanceTimersByTimeAsync(2000)
     expect(wrapper.get('.settings-footer [role="alert"]').text()).toContain('disk full')
     expect(wrapper.find('.settings-page .unsaved-badge').exists()).toBe(true)
   })

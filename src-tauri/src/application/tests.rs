@@ -195,14 +195,8 @@ fn invalid_channel_collections_are_rejected_before_any_desktop_effect() {
 async fn formal_translation_changes_channel_only_after_the_collection_is_saved() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
-    let first = MockServer::new(
-        200,
-        json!({"choices":[{"message":{"content":"first result"}}]}),
-    );
-    let second = MockServer::new(
-        200,
-        json!({"choices":[{"message":{"content":"second result"}}]}),
-    );
+    let first = MockServer::chat("first result");
+    let second = MockServer::chat("second result");
     let mut saved = channel_collection(&AiConfig {
         protocol: AiProtocol::Openai,
         endpoint: first.endpoint.clone(),
@@ -225,7 +219,7 @@ async fn formal_translation_changes_channel_only_after_the_collection_is_saved()
     let mut draft = saved.clone();
     draft.active_id = draft.channels[2].id.clone();
     let ai = ai::AiService::new().unwrap();
-    let first_result = translate(&store, &ai, &request()).await.unwrap();
+    let first_result = translate(&store, &ai, &request(), |_| {}).await.unwrap();
     assert_eq!(first_result.model, "model-first");
     assert_eq!(first_result.translated_text, "first result");
     assert!(first.captured().contains("model-first"));
@@ -237,7 +231,7 @@ async fn formal_translation_changes_channel_only_after_the_collection_is_saved()
         &draft,
     )
     .unwrap();
-    let second_result = translate(&store, &ai, &request()).await.unwrap();
+    let second_result = translate(&store, &ai, &request(), |_| {}).await.unwrap();
     assert_eq!(second_result.model, "model-second");
     assert_eq!(second_result.translated_text, "second result");
     assert!(second.captured().contains("model-second"));
@@ -347,10 +341,10 @@ fn request() -> TranslationRequest {
 async fn translation_uses_saved_configuration_http_response_and_real_history() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
-    let server = MockServer::new(200, json!({"choices":[{"message":{"content":" 你好 "}}]}));
+    let server = MockServer::chat(" 你好 ");
     configure_local_ai(&store, &server);
     let ai = ai::AiService::new().unwrap();
-    let result = translate(&store, &ai, &request()).await.unwrap();
+    let result = translate(&store, &ai, &request(), |_| {}).await.unwrap();
     assert_eq!(result.translated_text, "你好");
     assert_eq!(result.model, "fixture-model");
     assert!(result.warning.is_none());
@@ -370,7 +364,7 @@ async fn network_failure_creates_no_history() {
     let server = MockServer::new(500, json!({"error":"fixture error"}));
     configure_local_ai(&store, &server);
     let ai = ai::AiService::new().unwrap();
-    assert!(translate(&store, &ai, &request()).await.is_err());
+    assert!(translate(&store, &ai, &request(), |_| {}).await.is_err());
     assert_eq!(store.list_history("", 20, 0).unwrap().total, 0);
     assert!(server.captured().contains("Hello"));
 }
@@ -379,7 +373,7 @@ async fn network_failure_creates_no_history() {
 async fn connection_test_keeps_saved_configuration_and_history_unchanged() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
-    let server = MockServer::new(200, json!({"choices":[{"message":{"content":"fixture"}}]}));
+    let server = MockServer::chat("fixture");
     let mut draft = configure_local_ai(&store, &server);
     let original = store.configuration_snapshot().unwrap();
     draft.model = "unsaved-model".into();
@@ -394,18 +388,15 @@ async fn connection_test_keeps_saved_configuration_and_history_unchanged() {
 async fn responses_translation_persists_actual_result_and_model() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
-    let server = MockServer::new(
-        200,
-        json!({
-            "status":"completed", "output":[
-                {"type":"reasoning", "summary":[]},
-                {"type":"message", "role":"assistant", "status":"completed", "content":[
-                    {"type":"output_text", "text":"你好"},
-                    {"type":"output_text", "text":"世界"}
-                ]}
-            ]
-        }),
-    );
+    let server = MockServer::responses(json!({
+        "status":"completed", "output":[
+            {"type":"reasoning", "summary":[]},
+            {"type":"message", "role":"assistant", "status":"completed", "content":[
+                {"type":"output_text", "text":"你好"},
+                {"type":"output_text", "text":"世界"}
+            ]}
+        ]
+    }));
     let mut service_address = url::Url::parse(&server.endpoint).unwrap();
     service_address.set_path("/");
     let config = AiConfig {
@@ -421,7 +412,7 @@ async fn responses_translation_persists_actual_result_and_model() {
         &channel_collection(&config),
     )
     .unwrap();
-    let result = translate(&store, &ai::AiService::new().unwrap(), &request())
+    let result = translate(&store, &ai::AiService::new().unwrap(), &request(), |_| {})
         .await
         .unwrap();
     assert_eq!(result.translated_text, "你好世界");
@@ -447,7 +438,7 @@ async fn incomplete_or_refused_responses_never_create_history() {
         json!({"status":"incomplete", "output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial-private"}]}]}),
         json!({"status":"completed", "output":[{"type":"message","role":"assistant","status":"completed","content":[{"type":"refusal","refusal":"refusal-private"}]}]}),
     ] {
-        let server = MockServer::new(200, response);
+        let server = MockServer::responses(response);
         let config = AiConfig {
             protocol: AiProtocol::OpenaiResponses,
             endpoint: server.endpoint.clone(),
@@ -457,7 +448,9 @@ async fn incomplete_or_refused_responses_never_create_history() {
         store
             .save_configuration(&Settings::default(), &channel_collection(&config))
             .unwrap();
-        let error = translate(&store, &ai, &request()).await.unwrap_err();
+        let error = translate(&store, &ai, &request(), |_| {})
+            .await
+            .unwrap_err();
         assert!(!error.contains("private"));
         assert_eq!(store.list_history("", 20, 0).unwrap().total, 0);
         server.captured();

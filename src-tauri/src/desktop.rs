@@ -20,6 +20,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, Modifiers};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+pub(crate) mod popup;
 #[cfg(any(windows, test))]
 mod selection;
 #[cfg(windows)]
@@ -36,10 +37,12 @@ struct PendingSelection {
     shortcut: u32,
     generation: u64,
     target: Foreground,
+    cursor: Option<tauri::PhysicalPosition<i32>>,
 }
 
 pub struct DesktopRuntime {
     stop: AtomicBool,
+    pub(crate) popup: popup::Popup,
     tray_available: AtomicBool,
     shortcuts: Mutex<Vec<(Shortcut, ShortcutAction)>>,
     shortcut_update: Mutex<()>,
@@ -57,6 +60,7 @@ impl Default for DesktopRuntime {
     fn default() -> Self {
         Self {
             stop: AtomicBool::new(false),
+            popup: popup::Popup::default(),
             tray_available: AtomicBool::new(false),
             shortcuts: Mutex::new(Vec::new()),
             shortcut_update: Mutex::new(()),
@@ -252,6 +256,7 @@ impl DesktopRuntime {
                             shortcut: shortcut.id(),
                             generation,
                             target,
+                            cursor: app.cursor_position().ok().map(|point| point.cast()),
                         });
                     }
                 }
@@ -288,7 +293,7 @@ impl DesktopRuntime {
                 target: request.target,
                 app: &handle,
             };
-            let Some(text) = selection::capture_text(
+            let Some((text, stamp)) = selection::capture_text(
                 &source,
                 || Instant::now() < deadline && job.0.selection_is_current(&request),
                 || std::thread::sleep(Duration::from_millis(20)),
@@ -300,10 +305,22 @@ impl DesktopRuntime {
             let _ = handle.run_on_main_thread(move || {
                 if Instant::now() < deadline
                     && job.0.selection_is_current(&request)
-                    && request.target.is_current()
-                    && present_window(&window_handle)
+                    && request.target.still_owns_copy(stamp)
                 {
-                    let _ = window_handle.emit("desktop-clipboard", text);
+                    let runtime = Arc::downgrade(&job.0);
+                    let target = request.target;
+                    let origin = popup::Origin {
+                        cursor: request.cursor,
+                        source_monitor: Arc::new(move || target.monitor_point()),
+                        valid: Arc::new(move || {
+                            runtime.upgrade().is_some_and(|runtime| {
+                                runtime.selection_is_current(&request)
+                                    && request.target.still_owns_copy(stamp)
+                            })
+                        }),
+                    };
+                    let state = window_handle.state::<AppState>();
+                    state.desktop.popup.offer(&window_handle, text, origin);
                 }
             });
         });
@@ -321,6 +338,7 @@ impl DesktopRuntime {
 
     pub fn shutdown(&self, app: &AppHandle) {
         self.stop.store(true, Ordering::Release);
+        self.popup.clear();
         let _ = app.global_shortcut().unregister_all();
     }
 

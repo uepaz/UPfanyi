@@ -20,7 +20,6 @@ vi.mock('../services/desktop', () => ({
       'deleteFavorite',
       'exportFavorites',
       'copyText',
-      'onClipboard',
       'onNavigate',
     ].map((key) => [key, vi.fn()]),
   ),

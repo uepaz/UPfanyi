@@ -1,5 +1,5 @@
-use crate::{application, model::*, AppState};
-use tauri::{AppHandle, Manager, State};
+use crate::{application, desktop::popup, model::*, AppState};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -35,11 +35,34 @@ pub fn bootstrap(app: AppHandle) -> Result<Bootstrap, String> {
 }
 
 #[tauri::command]
+pub fn get_target_language(state: State<'_, AppState>) -> Result<TargetLanguage, String> {
+    state.store.target_language()
+}
+
+#[tauri::command]
+pub fn set_target_language(
+    language: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TargetLanguage, String> {
+    let saved = state.store.set_target_language(&language)?;
+    // 两个 WebView 只接收已提交的语言代码及版本，窗口重载后可直接读取最新值。
+    // 正在关闭的窗口可能收不到事件，重新进入时会核对快照；提交成功仍应回执成功。
+    let _ = app.emit("target-language-changed", &saved);
+    Ok(saved)
+}
+
+#[tauri::command]
 pub async fn translate(
     request: TranslationRequest,
+    on_delta: tauri::ipc::Channel<String>,
     state: State<'_, AppState>,
 ) -> Result<Translation, String> {
-    application::translate(&state.store, &state.ai, &request).await
+    application::translate(&state.store, &state.ai, &request, |text| {
+        // 此通道只回到发起请求的 WebView。窗口关闭后，正式请求仍按原规则完成入库。
+        let _ = on_delta.send(text.to_owned());
+    })
+    .await
 }
 
 #[tauri::command]
@@ -161,6 +184,68 @@ pub fn copy_text(text: String, app: AppHandle) -> Result<(), String> {
     app.clipboard()
         .write_text(text)
         .map_err(|error| format!("复制失败：{error}"))
+}
+
+#[tauri::command]
+pub fn popup_snapshot(state: State<'_, AppState>) -> popup::Snapshot {
+    state.desktop.popup.snapshot()
+}
+
+#[tauri::command]
+pub async fn popup_ready(app: AppHandle, request_id: u64) -> Result<(), String> {
+    popup::on_ui(app, move |app, state| {
+        state.desktop.popup.ready(app, request_id);
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn popup_retranslate(
+    app: AppHandle,
+    request_id: u64,
+    request: TranslationRequest,
+) -> Result<popup::Snapshot, String> {
+    let config = popup::saved_channel(&app).await;
+    popup::on_ui(app, move |app, state| {
+        state
+            .desktop
+            .popup
+            .retranslate(app, request_id, request, config)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn popup_pin(app: AppHandle, request_id: u64, pinned: bool) -> Result<(), String> {
+    popup::on_ui(app, move |app, state| {
+        state.desktop.popup.pin(app, request_id, pinned)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn popup_copy(app: AppHandle, request_id: u64) -> Result<(), String> {
+    popup::on_ui(app, move |app, state| {
+        state.desktop.popup.copy(app, request_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn popup_start_drag(window: tauri::Window) -> Result<(), String> {
+    // 调用窗口由宿主注入，WebView 无需取得可指定其它窗口的通用权限。
+    window
+        .start_dragging()
+        .map_err(|_| "POPUP_WINDOW_FAILED".into())
+}
+
+#[tauri::command]
+pub async fn popup_dismiss(app: AppHandle, request_id: u64) -> Result<(), String> {
+    popup::on_ui(app, move |app, state| {
+        state.desktop.popup.dismiss(app, Some(request_id))
+    })
+    .await
 }
 
 #[tauri::command]

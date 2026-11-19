@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import Notice from '../components/Notice.vue'
 import RecordPagination from '../components/RecordPagination.vue'
+import RecordTime from '../components/RecordTime.vue'
 import ConfirmAction from '../components/ConfirmAction.vue'
 import { useRecords } from '../composables/useRecords'
 import { useI18n } from '../i18n'
@@ -115,9 +116,11 @@ async function copy(value: string) {
             :aria-pressed="selected?.id === item.id"
             @click="selected = item"
           >
-            <strong>{{ item.sourceText }}</strong
-            ><span>{{ item.translatedText }}</span
-            ><small>{{ item.model }} <span>·</span> {{ item.createTime }}</small>
+            <strong>{{ item.sourceText }}</strong>
+            <span>{{ item.translatedText }}</span>
+            <small>
+              {{ item.model }} <span>·</span> <RecordTime :timestamp="item.createTime" />
+            </small>
           </button>
         </div>
         <RecordPagination
@@ -135,8 +138,8 @@ async function copy(value: string) {
         </div>
         <template v-else
           ><header class="detail-heading">
-            <span class="model-badge" :title="selected.model">{{ selected.model }}</span
-            ><small>{{ selected.createTime }}</small>
+            <span class="model-badge" :title="selected.model">{{ selected.model }}</span>
+            <small><RecordTime :timestamp="selected.createTime" /></small>
           </header>
           <div class="detail-text">
             <label>{{ t('source') }} · {{ t(selected.sourceLang) }}</label>

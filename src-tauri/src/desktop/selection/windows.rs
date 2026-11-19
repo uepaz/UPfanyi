@@ -48,6 +48,30 @@ impl Foreground {
         (unsafe { GetForegroundWindow() } == window).then_some(target)
     }
 
+    pub(in crate::desktop) fn monitor_point(self) -> Option<tauri::PhysicalPosition<i32>> {
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        let monitor = unsafe { MonitorFromWindow(self.window as HWND, MONITOR_DEFAULTTONEAREST) };
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        (unsafe { GetMonitorInfoW(monitor, &mut info) } != 0).then(|| {
+            let rect = info.rcMonitor;
+            tauri::PhysicalPosition::new(
+                rect.left.midpoint(rect.right),
+                rect.top.midpoint(rect.bottom),
+            )
+        })
+    }
+
+    pub(in crate::desktop) fn still_owns_copy(self, stamp: ClipboardStamp) -> bool {
+        self.is_current()
+            && unsafe { GetClipboardOwner() } as usize == stamp.owner
+            && unsafe { GetClipboardSequenceNumber() } == stamp.sequence
+    }
+
     pub(in crate::desktop) fn is_current(self) -> bool {
         Self::current() == Some(self)
     }

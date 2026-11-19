@@ -7,18 +7,21 @@ mod tests;
 use self::config::{read_ai_channels, read_settings, write_ai_channels, write_settings};
 use self::schema::{initialize_database, prepare_connection, validate_database, CandidateDatabase};
 use crate::model::{
-    AiChannels, AiConfig, FavoriteWord, HistoryRecord, Page, Settings, Translation,
+    AiChannels, AiConfig, FavoriteWord, HistoryRecord, Page, Settings, TargetLanguage, Translation,
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OpenFlags, Row};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 const DATABASE_FILE: &str = "upfanyi.sqlite3";
 
 pub struct Store {
     connection: Mutex<Connection>,
+    // 在连接锁内读取或递增。版本只对本次运行的窗口有效，语言本身保存在 SQLite。
+    target_revision: AtomicU64,
     pub data_dir: PathBuf,
 }
 
@@ -63,6 +66,7 @@ impl Store {
         validate_database(&mut connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
+            target_revision: AtomicU64::new(0),
             data_dir: data_dir.to_path_buf(),
         })
     }
@@ -70,6 +74,34 @@ impl Store {
     pub fn settings(&self) -> Result<Settings, String> {
         let connection = self.lock()?;
         read_settings(&connection)
+    }
+
+    pub fn target_language(&self) -> Result<TargetLanguage, String> {
+        let connection = self.lock()?;
+        Ok(TargetLanguage {
+            language: read_settings(&connection)?.default_target_lang,
+            revision: self.target_revision.load(Ordering::Relaxed),
+        })
+    }
+
+    pub fn set_target_language(&self, language: &str) -> Result<TargetLanguage, String> {
+        crate::validation::validate_languages("auto", language)?;
+        let mut connection = self.lock()?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let mut settings = read_settings(&transaction)?;
+        let changed = settings.default_target_lang != language;
+        if changed {
+            settings.default_target_lang = language.to_owned();
+            write_settings(&transaction, &settings)?;
+        }
+        transaction.commit().map_err(database_error)?;
+        if changed {
+            self.target_revision.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(TargetLanguage {
+            language: settings.default_target_lang,
+            revision: self.target_revision.load(Ordering::Relaxed),
+        })
     }
 
     pub fn ai_config(&self) -> Result<AiConfig, String> {
@@ -98,14 +130,15 @@ impl Store {
     ) -> Result<(), String> {
         crate::validation::validate_settings(settings)?;
         let config = crate::channels::normalize(config)?;
-        let serialized =
-            serde_json::to_string(settings).map_err(|_| "设置序列化失败".to_owned())?;
         let mut connection = self.lock()?;
         let transaction = connection.transaction().map_err(database_error)?;
-        // 拒绝覆盖已经损坏的原生配置，不通过一次保存把错误内容静默重置。
-        read_settings(&transaction)?;
+        // 设置页的草稿可能早于另一个窗口的语言选择。仅专用命令可更新目标语言。
+        let settings = Settings {
+            default_target_lang: read_settings(&transaction)?.default_target_lang,
+            ..settings.clone()
+        };
         read_ai_channels(&transaction)?;
-        write_settings(&transaction, &serialized)?;
+        write_settings(&transaction, &settings)?;
         write_ai_channels(&transaction, &config)?;
         transaction.commit().map_err(database_error)
     }

@@ -20,7 +20,7 @@ fn responses_concatenates_completed_assistant_text_in_order_and_skips_non_messag
         ],
     });
     assert_eq!(
-        response_text(AiProtocol::OpenaiResponses, &value).unwrap(),
+        completed_response_text(&value).unwrap(),
         "第一段\n第二段\n第三段"
     );
 }
@@ -39,12 +39,12 @@ fn responses_rejects_missing_non_completed_and_invalid_status_without_partial_te
         let mut value = success(AiProtocol::OpenaiResponses);
         value["status"] = status;
         value["output"][0]["content"][0]["text"] = json!("fixture-private-partial");
-        let error = response_text(AiProtocol::OpenaiResponses, &value).unwrap_err();
+        let error = completed_response_text(&value).unwrap_err();
         assert!(!error.contains("fixture-private"));
     }
     let mut value = success(AiProtocol::OpenaiResponses);
     value.as_object_mut().unwrap().remove("status");
-    assert!(response_text(AiProtocol::OpenaiResponses, &value).is_err());
+    assert!(completed_response_text(&value).is_err());
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn responses_rejects_refusals_and_malformed_assistant_output() {
     ];
     for output in invalid_outputs {
         let value = json!({"status":"completed", "output":output});
-        let error = response_text(AiProtocol::OpenaiResponses, &value).unwrap_err();
+        let error = completed_response_text(&value).unwrap_err();
         assert!(!error.contains("fixture-private"));
     }
     for output in [
@@ -76,18 +76,17 @@ fn responses_rejects_refusals_and_malformed_assistant_output() {
         json!([{"type":"reasoning", "summary":[]}]),
         json!([{"type":"message", "role":"assistant", "status":"completed", "content":[]}]),
     ] {
-        assert!(response_text(
-            AiProtocol::OpenaiResponses,
-            &json!({"status":"completed", "output":output})
-        )
-        .unwrap_err()
-        .contains("空译文"));
+        assert!(
+            completed_response_text(&json!({"status":"completed", "output":output}))
+                .unwrap_err()
+                .contains("空译文")
+        );
     }
 }
 
 #[tokio::test]
 async fn responses_uses_snapshot_instructions_and_never_stores_response_server_side() {
-    let server = MockServer::new(200, success(AiProtocol::OpenaiResponses));
+    let server = MockServer::responses(success(AiProtocol::OpenaiResponses));
     let draft = config(AiProtocol::OpenaiResponses, &server.endpoint);
     let before = draft.clone();
     let result = AiService::new().unwrap().test(&draft).await.unwrap();
@@ -97,7 +96,7 @@ async fn responses_uses_snapshot_instructions_and_never_stores_response_server_s
     assert_eq!(body["model"], "fixture-model");
     assert_eq!(body["input"], "Hello");
     assert_eq!(body["instructions"], "Translate 英语 to 中文; 中文.");
-    assert_eq!(body["stream"], false);
+    assert_eq!(body["stream"], true);
     assert_eq!(body["store"], false);
     assert_eq!(body.as_object().unwrap().len(), 5);
     let mut empty_prompt = draft;
@@ -112,7 +111,7 @@ async fn responses_failures_from_local_http_do_not_expose_partial_results_or_sec
         json!({"status":"completed", "error":{"message":"fixture-private"}, "output":[]}),
         json!({"status":"completed", "output":[{"type":"message", "role":"assistant", "status":"completed", "content":[{"type":"refusal", "refusal":"fixture-private"}]}]}),
     ] {
-        let server = MockServer::new(200, value);
+        let server = MockServer::responses(value);
         let error = AiService::new()
             .unwrap()
             .translate(

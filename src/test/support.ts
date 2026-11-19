@@ -103,7 +103,6 @@ beforeEach(() => {
   setLocale('zh_CN')
   vi.mocked(desktop.bootstrap).mockResolvedValue(bootstrap())
   vi.mocked(desktop.translate).mockResolvedValue(translation())
-  vi.mocked(desktop.onClipboard).mockResolvedValue(() => {})
   vi.mocked(desktop.onNavigate).mockResolvedValue(() => {})
   vi.mocked(desktop.listHistory).mockResolvedValue({ items: [history], total: 1 })
   vi.mocked(desktop.listFavorites).mockResolvedValue({ items: [favorite], total: 1 })

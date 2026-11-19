@@ -35,7 +35,11 @@ pub(super) fn read_ai_channels(connection: &Connection) -> Result<AiChannels, St
     Ok(config)
 }
 
-pub(super) fn write_settings(transaction: &Transaction<'_>, value: &str) -> Result<(), String> {
+pub(super) fn write_settings(
+    transaction: &Transaction<'_>,
+    settings: &Settings,
+) -> Result<(), String> {
+    let value = serde_json::to_string(settings).map_err(|_| "设置序列化失败".to_owned())?;
     transaction.execute(
         "INSERT INTO app_settings (id, settings_json) VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET settings_json = excluded.settings_json",
         [value],

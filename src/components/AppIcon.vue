@@ -15,6 +15,8 @@ const paths: Record<string, string> = {
   check: 'M5 12l4 4L19 6',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   close: 'M6 6l12 12M6 18 18 6',
+  pin: 'M8 3h8l-1 2v5l3 4v1H6v-1l3-4V5zM12 15v6',
+  chevron: 'm7 10 5 5 5-5',
 }
 </script>
 <template>

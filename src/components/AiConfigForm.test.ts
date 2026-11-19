@@ -14,7 +14,6 @@ vi.mock('../services/desktop', () => ({
     [
       'bootstrap',
       'translate',
-      'onClipboard',
       'onNavigate',
       'listHistory',
       'listFavorites',
@@ -242,17 +241,28 @@ describe('explicit AI configuration', () => {
     expect(wrapper.find('.official-website-button').exists()).toBe(false)
     expect(wrapper.find('#ai-endpoint').exists()).toBe(true)
   })
-  it('uses explicit official identity and describes draft retention in both languages', async () => {
-    render({ protocol: 'openai-responses', endpoint: UPFANYI_AI_ENDPOINT }, true)
+  it('shows the official channel and the live setup status beside the heading in both languages', async () => {
+    const config = render({ protocol: 'openai-responses', endpoint: UPFANYI_AI_ENDPOINT }, true)
+    const heading = wrapper.get('header')
+    const status = heading.get('h2 + [role="status"]')
+    expect(heading.get('h2').text()).toBe('AI 翻译')
+    expect(status.text()).toContain('需要填写 模型')
     expect(wrapper.get('#ai-channel').attributes('data-value')).toBe('upfanyi')
     expect(wrapper.emitted('update')).toBeUndefined()
     expect(wrapper.get('#ai-channel').text()).toBe('UP翻译官方 AI')
-    expect(wrapper.get('#ai-channel-hint').text()).toContain('保留独立配置')
+    expect(wrapper.get('#ai-channel').attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('#ai-model').attributes('aria-describedby')).toBe('ai-model-status')
+    expect(wrapper.get('#ai-model-status').attributes('aria-live')).toBe('polite')
+    await wrapper.setProps({ config: { ...config, model: 'fixture-model' } })
+    expect(status.text()).toBe('已配置')
     setLocale('en_US')
     await wrapper.vm.$nextTick()
     expect(wrapper.get('label[for="ai-channel"]').text()).toContain('AI channel')
     expect(wrapper.get('#ai-channel').text()).toBe('UPfanyi official AI')
-    expect(wrapper.get('#ai-channel-hint').text()).toContain('keeps its own configuration')
+    expect(heading.get('h2').text()).toBe('AI translation')
+    expect(status.text()).toBe('Configured')
+    await wrapper.setProps({ config })
+    expect(status.text()).toContain('Required fields: Model')
   })
   it('opens the fixed website only on click and displays friendly bilingual failures without changing configuration', async () => {
     const original = render(

@@ -4,6 +4,7 @@ import AppIcon from '../components/AppIcon.vue'
 import AppSelect from '../components/AppSelect.vue'
 import Notice from '../components/Notice.vue'
 import { useTranslation } from '../composables/useTranslation'
+import { useTargetLanguage } from '../composables/useTargetLanguage'
 import { languageCodes, useI18n } from '../i18n'
 import { desktop, errorMessage } from '../services/desktop'
 import { aiConfigStatus } from '../services/aiConfig'
@@ -20,12 +21,17 @@ const {
   targetLang,
   auto,
   result,
+  partial,
   pending,
   error,
   run,
   setTextAndTranslate,
   applyDefaults,
+  syncTarget,
 } = useTranslation(props.data.settings)
+const sharedTarget = useTargetLanguage(() => props.data.settings.defaultTargetLang)
+const { error: targetError } = sharedTarget
+watch(sharedTarget.language, syncTarget, { flush: 'sync' })
 const actionError = ref('')
 const message = ref('')
 const savingFavorite = ref(false)
@@ -45,7 +51,12 @@ function swap() {
   }
   const source = sourceLang.value
   sourceLang.value = targetLang.value
-  targetLang.value = source
+  chooseTarget(source)
+}
+function chooseTarget(value: string) {
+  if (value === targetLang.value) return
+  targetLang.value = value
+  void sharedTarget.choose(value)
 }
 function keydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -79,11 +90,7 @@ async function favorite() {
     savingFavorite.value = false
   }
 }
-function translateClipboard(value: string) {
-  applyDefaults(props.data.settings)
-  return setTextAndTranslate(value)
-}
-defineExpose({ setTextAndTranslate, translateClipboard })
+defineExpose({ setTextAndTranslate })
 </script>
 <template>
   <section class="page translate-page">
@@ -116,9 +123,10 @@ defineExpose({ setTextAndTranslate, translateClipboard })
         ><span class="sr-only">{{ t('targetLang') }}</span
         ><AppSelect
           id="translate-target-lang"
-          v-model="targetLang"
+          :model-value="targetLang"
           :label="t('targetLang')"
           :options="targetOptions"
+          @update:model-value="chooseTarget"
       /></label>
     </div>
     <div v-if="needsSetup" class="setup-hint card" role="status">
@@ -129,6 +137,7 @@ defineExpose({ setTextAndTranslate, translateClipboard })
     </div>
     <Notice v-if="error" kind="error">{{ t('requestError') }} · {{ failure(error) }}</Notice>
     <Notice v-if="actionError" kind="error">{{ failure(actionError) }}</Notice>
+    <Notice v-if="targetError" kind="error">{{ t(targetError) }}</Notice>
     <Notice v-if="message" kind="success">{{ message }}</Notice>
     <div class="translation-panels">
       <section class="text-panel card">
@@ -168,10 +177,11 @@ defineExpose({ setTextAndTranslate, translateClipboard })
           ><span v-if="result" class="model-badge" :title="result.model">{{ result.model }}</span>
         </header>
         <div class="result-content" aria-live="polite">
-          <div v-if="pending" class="pending-line">
+          <div v-if="pending && !partial" class="pending-line">
             <span class="spinner"></span>{{ t('translating') }}
           </div>
-          <p v-if="result">{{ result.translatedText }}</p>
+          <p v-if="pending && partial">{{ partial }}</p>
+          <p v-else-if="result">{{ result.translatedText }}</p>
           <div v-else-if="!pending" class="result-empty">
             <AppIcon name="translate" :size="36" /><span>{{ t('resultPlaceholder') }}</span>
           </div>

@@ -56,9 +56,7 @@ pub(super) fn initialize_database(connection: &mut Connection) -> Result<(), Str
     transaction
         .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(database_error)?;
-    let defaults =
-        serde_json::to_string(&Settings::default()).map_err(|_| "默认设置序列化失败".to_owned())?;
-    write_settings(&transaction, &defaults)?;
+    write_settings(&transaction, &Settings::default())?;
     write_ai_channels(&transaction, &AiChannels::default())?;
     transaction.commit().map_err(database_error)
 }

@@ -78,7 +78,7 @@ function keydown(event: KeyboardEvent) {
     close()
     return
   }
-  if (event.key === 'Escape') {
+  if (event.key === 'Escape' && open.value) {
     event.preventDefault()
     close()
     return

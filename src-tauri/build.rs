@@ -1,3 +1,29 @@
 fn main() {
-    tauri_build::build()
+    let manifest = tauri_build::AppManifest::new().commands(&[
+        "bootstrap",
+        "get_target_language",
+        "set_target_language",
+        "translate",
+        "test_ai_connection",
+        "list_ai_models",
+        "open_official_website",
+        "save_settings",
+        "list_history",
+        "delete_history",
+        "clear_history",
+        "list_favorites",
+        "save_favorite",
+        "delete_favorite",
+        "export_favorites",
+        "copy_text",
+        "popup_snapshot",
+        "popup_ready",
+        "popup_retranslate",
+        "popup_copy",
+        "popup_start_drag",
+        "popup_pin",
+        "popup_dismiss",
+    ]);
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
+        .expect("生成应用命令权限失败");
 }

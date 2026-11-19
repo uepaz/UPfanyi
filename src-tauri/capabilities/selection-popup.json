@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "selection-popup",
+  "description": "读取当前选区、控制结果小窗并订阅本窗的状态更新。",
+  "windows": ["selection-popup"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-get-target-language",
+    "allow-set-target-language",
+    "allow-popup-snapshot",
+    "allow-popup-ready",
+    "allow-popup-retranslate",
+    "allow-popup-copy",
+    "allow-popup-start-drag",
+    "allow-popup-pin",
+    "allow-popup-dismiss"
+  ]
+}

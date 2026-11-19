@@ -49,9 +49,21 @@ pub(crate) async fn translate(
     store: &Store,
     ai: &ai::AiService,
     request: &TranslationRequest,
+    on_delta: impl FnMut(&str) + Send,
 ) -> Result<Translation, String> {
     let (_, channels) = store.configuration_snapshot()?;
-    let result = ai.translate(request, channels.active_config()?).await?;
+    translate_with_config(store, ai, request, channels.active_config()?, on_delta).await
+}
+
+/// 调用方已取得本次配置快照，网络往返期间释放数据库锁。
+pub(crate) async fn translate_with_config(
+    store: &Store,
+    ai: &ai::AiService,
+    request: &TranslationRequest,
+    config: &AiConfig,
+    on_delta: impl FnMut(&str) + Send,
+) -> Result<Translation, String> {
+    let result = ai.translate_stream(request, config, on_delta).await?;
     Ok(record_translation(store, result))
 }
 

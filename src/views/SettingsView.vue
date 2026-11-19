@@ -39,7 +39,14 @@ const changed = computed(
 const connectionTest = ref<{ pending: boolean; error?: string; success?: string }>()
 const saving = ref(false)
 const error = ref('')
-const message = ref('')
+const showSavedNotice = ref(false)
+watch(showSavedNotice, (visible, _, onCleanup) => {
+  if (!visible) return
+  const timer = setTimeout(() => {
+    showSavedNotice.value = false
+  }, 2000)
+  onCleanup(() => clearTimeout(timer))
+})
 let testGeneration = 0
 const nameDialog = ref<{ id?: string; initialName: string; error: string }>()
 const deleteChannelId = ref<string>()
@@ -62,7 +69,7 @@ function reset() {
   aiChannels.value = clone(props.data.aiChannels)
   connectionTest.value = undefined
   error.value = ''
-  message.value = ''
+  showSavedNotice.value = false
 }
 watch(() => props.data, reset)
 onScopeDispose(() => ++testGeneration)
@@ -156,7 +163,7 @@ async function invalid(messageKey: string, target: Section, selector: string) {
 }
 async function save() {
   error.value = ''
-  message.value = ''
+  showSavedNotice.value = false
   if (!draft.value.hotkeyShowWindow.trim() || !draft.value.hotkeyClipboardTranslate.trim()) {
     await invalid(
       'shortcutRequired',
@@ -172,7 +179,7 @@ async function save() {
     const saved = await desktop.saveSettings(clone(draft.value), clone(aiChannels.value))
     emit('saved', saved)
     await nextTick()
-    message.value = t('saved')
+    showSavedNotice.value = true
   } catch (reason) {
     error.value = errorMessage(reason)
   } finally {
@@ -270,7 +277,6 @@ async function save() {
             @rename="openNameDialog(true)"
             @delete="requestDelete"
           />
-          <p class="helper muted security-note">{{ t('securityHint') }}</p>
         </section>
         <details class="data-info">
           <summary>{{ t('dataDirectory') }}</summary>
@@ -280,7 +286,7 @@ async function save() {
       <footer class="settings-footer">
         <div class="settings-feedback">
           <Notice v-if="error" kind="error">{{ t('saveError') }} · {{ failure(error) }}</Notice
-          ><Notice v-else-if="message" kind="success">{{ message }}</Notice>
+          ><Notice v-else-if="showSavedNotice" kind="success">{{ t('saved') }}</Notice>
         </div>
         <div class="settings-actions">
           <button class="button subtle" type="button" :disabled="saving" @click="reset">

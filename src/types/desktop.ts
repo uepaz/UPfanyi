@@ -28,6 +28,10 @@ export interface AiChannels {
   activeId: string
   channels: AiChannel[]
 }
+export interface TargetLanguage {
+  language: string
+  revision: number
+}
 export interface TranslationRequest {
   text: string
   sourceLang: string
@@ -64,6 +68,37 @@ export interface Bootstrap {
   dataDir: string
   warnings: string[]
 }
+export type PopupError =
+  | 'settings'
+  | 'endpoint'
+  | 'model'
+  | 'key'
+  | 'network'
+  | 'timeout'
+  | 'incomplete'
+  | 'streamUnsupported'
+  | 'service'
+export type PopupSelection = {
+  selectionId: number
+  requestId: number
+  locale: string
+  sourceText: string
+  sourceLang: string
+  targetLang: string
+} & (
+  | { status: 'preparing' | 'loading' }
+  | { status: 'streaming'; translation: string }
+  | { status: 'success'; translation: string; historySaved: boolean }
+  | { status: 'error'; error: PopupError }
+)
+export interface PopupSnapshot {
+  version: number
+  dismissRequestId: number | null
+  preparing: PopupSelection | null
+  pinned: boolean
+  selection: PopupSelection | null
+}
+
 export type Navigation = 'translate' | 'history' | 'favorites' | 'settings'
 export interface ReuseText {
   text: string

@@ -11,6 +11,40 @@ fn test_store() -> (TempDir, Store) {
     (directory, store)
 }
 
+#[test]
+fn shared_target_survives_stale_settings_saves_and_restart() {
+    let (directory, store) = test_store();
+    let (mut draft, channels) = store.configuration_snapshot().unwrap();
+    let initial = store.target_language().unwrap();
+    let selected = store.set_target_language("ja").unwrap();
+    assert!(selected.revision > initial.revision);
+    assert_eq!(store.set_target_language("ja").unwrap(), selected);
+    assert_eq!(store.ai_channels().unwrap(), channels);
+    assert_eq!(
+        store.settings().unwrap(),
+        Settings {
+            default_target_lang: "ja".into(),
+            ..draft.clone()
+        }
+    );
+    draft.locale = "en_US".into();
+    store.save_configuration(&draft, &channels).unwrap();
+    assert_eq!(store.target_language().unwrap(), selected);
+    assert!(store.set_target_language("auto").is_err());
+    store
+        .lock()
+        .unwrap()
+        .execute_batch("PRAGMA query_only = ON")
+        .unwrap();
+    assert!(store.set_target_language("de").is_err());
+    assert_eq!(store.target_language().unwrap(), selected);
+    drop(store);
+    let reopened = Store::open(directory.path()).unwrap();
+    assert_eq!(reopened.target_language().unwrap().language, "ja");
+    assert_eq!(reopened.settings().unwrap().locale, "en_US");
+    assert_eq!(reopened.list_history("", 10, 0).unwrap().total, 0);
+}
+
 fn translation(text: &str, time: &str) -> Translation {
     Translation {
         source_text: text.into(),
@@ -918,7 +952,6 @@ fn concurrent_configuration_snapshots_never_mix_saved_groups() {
             Settings {
                 locale: "en_US".into(),
                 default_source_lang: "en".into(),
-                default_target_lang: "zh".into(),
                 ..Settings::default()
             },
             AiConfig {

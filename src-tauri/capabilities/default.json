@@ -3,5 +3,24 @@
   "identifier": "main-window",
   "description": "主窗口使用事件接收与集中Rust命令；系统操作由Rust提供。",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-bootstrap",
+    "allow-get-target-language",
+    "allow-set-target-language",
+    "allow-translate",
+    "allow-test-ai-connection",
+    "allow-list-ai-models",
+    "allow-open-official-website",
+    "allow-save-settings",
+    "allow-list-history",
+    "allow-delete-history",
+    "allow-clear-history",
+    "allow-list-favorites",
+    "allow-save-favorite",
+    "allow-delete-favorite",
+    "allow-export-favorites",
+    "allow-copy-text"
+  ]
 }

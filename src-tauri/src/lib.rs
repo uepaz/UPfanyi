@@ -90,6 +90,21 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == desktop::popup::LABEL {
+                if let Some(state) = window.try_state::<AppState>() {
+                    match event {
+                        WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            let _ = state.desktop.popup.dismiss(window.app_handle(), None);
+                        }
+                        WindowEvent::Focused(focused) => {
+                            state.desktop.popup.focus_changed(window, *focused)
+                        }
+                        _ => {}
+                    }
+                }
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if let Some(state) = window.app_handle().try_state::<AppState>() {
                     if state
@@ -108,6 +123,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
+            commands::get_target_language,
+            commands::set_target_language,
             commands::translate,
             commands::test_ai_connection,
             commands::list_ai_models,
@@ -120,7 +137,14 @@ pub fn run() {
             commands::save_favorite,
             commands::delete_favorite,
             commands::export_favorites,
-            commands::copy_text
+            commands::copy_text,
+            commands::popup_snapshot,
+            commands::popup_ready,
+            commands::popup_retranslate,
+            commands::popup_copy,
+            commands::popup_start_drag,
+            commands::popup_pin,
+            commands::popup_dismiss
         ])
         .build(tauri::generate_context!())
         .expect("UP翻译初始化失败，请检查数据目录和运行环境");

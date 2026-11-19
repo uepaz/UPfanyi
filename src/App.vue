@@ -21,7 +21,7 @@ const translationView = ref<InstanceType<typeof TranslateView> | null>(null)
 const settingsView = ref<InstanceType<typeof SettingsView> | null>(null)
 const pages: Navigation[] = ['translate', 'history', 'favorites', 'settings']
 let disposed = false
-const unlisten: (() => void)[] = []
+let unlisten: (() => void) | undefined
 function saved(value: Bootstrap) {
   data.value = value
   setLocale(value.settings.locale)
@@ -42,11 +42,6 @@ async function reuse(value: ReuseText) {
   await nextTick()
   await translationView.value?.setTextAndTranslate(value.text, value.sourceLang, value.targetLang)
 }
-async function clipboard(text: string) {
-  page.value = 'translate'
-  await nextTick()
-  await translationView.value?.translateClipboard(text)
-}
 async function configureAi() {
   page.value = 'settings'
   await nextTick()
@@ -54,28 +49,20 @@ async function configureAi() {
 }
 onMounted(async () => {
   await bootstrap()
-  for (const register of [
-    () =>
-      desktop.onClipboard((text) => {
-        void clipboard(text)
-      }),
-    () =>
-      desktop.onNavigate((value) => {
-        if (value === 'settings') page.value = 'settings'
-      }),
-  ]) {
-    try {
-      const cleanup = await register()
-      if (disposed) cleanup()
-      else unlisten.push(cleanup)
-    } catch (reason) {
-      eventError.value = errorMessage(reason)
-    }
+  if (disposed) return
+  try {
+    const cleanup = await desktop.onNavigate((value) => {
+      if (value === 'settings') page.value = 'settings'
+    })
+    if (disposed) cleanup()
+    else unlisten = cleanup
+  } catch (reason) {
+    if (!disposed) eventError.value = errorMessage(reason)
   }
 })
 onUnmounted(() => {
   disposed = true
-  unlisten.forEach((cleanup) => cleanup())
+  unlisten?.()
 })
 </script>
 <template>

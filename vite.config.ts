@@ -11,5 +11,5 @@ export default defineConfig({
     watch: { ignored: ['**/src-tauri/**'] },
   },
   envPrefix: ['VITE_', 'TAURI_ENV_'],
-  build: { target: 'es2022' },
+  build: { target: 'es2022', rolldownOptions: { input: ['index.html', 'selection-popup.html'] } },
 })

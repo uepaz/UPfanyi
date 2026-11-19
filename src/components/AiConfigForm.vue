@@ -25,7 +25,7 @@ const emit = defineEmits<{
   test: []
   models: []
 }>()
-const { t, failure } = useI18n()
+const { t, failure, isEnglish } = useI18n()
 const visibleSecret = ref(false)
 const status = computed(() => aiConfigStatus(props.config))
 const channel = computed(() => props.channels.activeId)
@@ -79,13 +79,16 @@ async function openOfficialWebsite() {
 
 <template>
   <div class="ai-config-form">
-    <h2>{{ t('ai') }}</h2>
-    <p class="ai-state" :class="{ incomplete: !status.configured }">
-      {{ status.configured ? t('configured') : t('notConfigured') }}
-      <template v-if="status.missing.length">
-        · {{ t('missingFields') }} {{ status.missing.map((name) => t(name)).join('、') }}
-      </template>
-    </p>
+    <header class="ai-config-heading">
+      <h2>{{ t('ai') }}</h2>
+      <span class="ai-state" :class="{ incomplete: !status.configured }" role="status">
+        {{ status.configured ? t('configured') : t('notConfigured') }}
+        <template v-if="status.missing.length">
+          · {{ t('missingFields') }}
+          {{ status.missing.map((name) => t(name)).join(isEnglish ? ', ' : '、') }}
+        </template>
+      </span>
+    </header>
     <div class="ai-fields">
       <div class="ai-channel-row">
         <label class="field" for="ai-channel">
@@ -94,13 +97,11 @@ async function openOfficialWebsite() {
             id="ai-channel"
             :model-value="channel"
             :label="t('aiChannel')"
-            described-by="ai-channel-hint"
             :disabled="disabled"
             :options="channelOptions"
             @update:model-value="emit('channel', $event)"
             @action="emit('add')"
           />
-          <small id="ai-channel-hint">{{ t('aiChannelHint') }}</small>
           <div v-if="channel !== 'upfanyi'" class="channel-actions">
             <button
               class="button subtle small"
@@ -218,7 +219,6 @@ async function openOfficialWebsite() {
             <AppIcon name="eye" :size="17" />
           </button>
         </div>
-        <small>{{ t('apiKeyHint') }}</small>
       </div>
       <div class="field">
         <label for="ai-model"
@@ -231,7 +231,7 @@ async function openOfficialWebsite() {
             :options="models?.items ?? []"
             :label="t('model')"
             :placeholder="t('modelPlaceholder')"
-            described-by="ai-model-hint ai-model-status"
+            described-by="ai-model-status"
             :disabled="disabled"
             @update:model-value="emit('update', { ...config, model: $event })"
           />
@@ -250,18 +250,34 @@ async function openOfficialWebsite() {
                   : t('loadModels')
             }}
           </button>
+          <div id="ai-model-status" aria-live="polite" :aria-busy="models?.pending ?? false">
+            <Notice v-if="models?.error" kind="error">
+              {{ t('modelsError') }} · {{ failure(models.error) }} {{ t('modelManualHint') }}
+            </Notice>
+            <small v-else-if="models?.loaded">
+              {{
+                models.items.length
+                  ? `${t('modelsLoaded')} ${models.items.length}`
+                  : t('modelsEmpty')
+              }}
+            </small>
+          </div>
         </div>
-        <small id="ai-model-hint">{{ t('modelHint') }}</small>
-        <div id="ai-model-status" aria-live="polite" :aria-busy="models?.pending ?? false">
-          <Notice v-if="models?.error" kind="error">
-            {{ t('modelsError') }} · {{ failure(models.error) }} {{ t('modelManualHint') }}
-          </Notice>
-          <small v-else-if="models?.loaded">
-            {{
-              models.items.length ? `${t('modelsLoaded')} ${models.items.length}` : t('modelsEmpty')
-            }}
-          </small>
-        </div>
+      </div>
+      <div class="test-connection">
+        <button
+          class="button subtle"
+          type="button"
+          :disabled="disabled || test?.pending"
+          @click="emit('test')"
+        >
+          <span v-if="test?.pending" class="spinner"></span
+          >{{ test?.pending ? t('testing') : t('connectionTest') }}
+        </button>
+        <Notice v-if="test?.error" kind="error">{{ failure(test.error) }}</Notice>
+        <Notice v-if="test?.success" kind="success"
+          >{{ t('testSuccess') }} · {{ test.success }}</Notice
+        >
       </div>
       <label class="field" for="ai-system-prompt">
         <span
@@ -269,26 +285,13 @@ async function openOfficialWebsite() {
         >
         <textarea
           id="ai-system-prompt"
+          aria-describedby="ai-system-prompt-hint"
           :value="config.systemPrompt"
           rows="3"
           @input="setField('systemPrompt', $event)"
         ></textarea>
       </label>
     </div>
-    <p class="helper muted">{{ t('aiHint') }}</p>
-    <Notice v-if="test?.error" kind="error">{{ failure(test.error) }}</Notice>
-    <Notice v-if="test?.success" kind="success">{{ t('testSuccess') }} · {{ test.success }}</Notice>
-    <div class="test-connection">
-      <button
-        class="button subtle"
-        type="button"
-        :disabled="disabled || test?.pending"
-        @click="emit('test')"
-      >
-        <span v-if="test?.pending" class="spinner"></span
-        >{{ test?.pending ? t('testing') : t('connectionTest') }}
-      </button>
-      <p class="helper muted">{{ t('testHint') }}</p>
-    </div>
+    <p id="ai-system-prompt-hint" class="helper muted">{{ t('aiHint') }}</p>
   </div>
 </template>

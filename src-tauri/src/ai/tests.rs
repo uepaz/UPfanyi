@@ -28,7 +28,7 @@ pub(super) fn config(protocol: AiProtocol, endpoint: &str) -> AiConfig {
 
 pub(super) fn success(protocol: AiProtocol) -> Value {
     match protocol {
-        AiProtocol::Openai => json!({"choices":[{"message":{"content":"  你好\n世界  "}}]}),
+        AiProtocol::Openai => json!({"choices":[{"delta":{"content":"  你好\n世界  "}}]}),
         AiProtocol::OpenaiResponses => json!({
             "status": "completed",
             "output": [{
@@ -37,6 +37,22 @@ pub(super) fn success(protocol: AiProtocol) -> Value {
             }],
         }),
     }
+}
+
+pub(super) fn stream_server(protocol: AiProtocol, event: Value) -> MockServer {
+    match protocol {
+        AiProtocol::Openai => MockServer::events(&format!("data: {event}\n\ndata: [DONE]\n\n")),
+        AiProtocol::OpenaiResponses => MockServer::responses(event),
+    }
+}
+
+async fn fixture_text(protocol: AiProtocol, event: Value) -> Result<String, String> {
+    let server = stream_server(protocol, event);
+    AiService::new()
+        .unwrap()
+        .translate(&request(), &config(protocol, &server.endpoint))
+        .await
+        .map(|r| r.translated_text)
 }
 
 pub(super) fn captured_body(http: &str) -> Value {
@@ -129,7 +145,7 @@ async fn service_domains_generate_translation_paths_for_all_interfaces() {
             "/gateway/v1/responses",
         ),
     ] {
-        let server = MockServer::new(200, success(protocol));
+        let server = stream_server(protocol, success(protocol));
         let mut address = Url::parse(&server.endpoint).unwrap();
         address.set_path(base);
         let draft = config(protocol, address.as_str());
@@ -213,12 +229,12 @@ fn empty_prompt_is_not_replaced_with_a_default() {
     );
 }
 
-#[test]
-fn protocols_use_their_own_parameters_and_response_paths() {
+#[tokio::test]
+async fn protocols_use_their_own_parameters_and_response_paths() {
     for protocol in [AiProtocol::Openai, AiProtocol::OpenaiResponses] {
         let body = request_body(&request(), &config(protocol, "https://example.test/chat"));
         assert_eq!(body["model"], "fixture-model");
-        assert_eq!(body["stream"], false);
+        assert_eq!(body["stream"], true);
         match protocol {
             AiProtocol::Openai => {
                 assert_eq!(body["messages"][0]["role"], "system");
@@ -240,7 +256,7 @@ fn protocols_use_their_own_parameters_and_response_paths() {
             }
         }
         assert_eq!(
-            response_text(protocol, &success(protocol)).unwrap(),
+            fixture_text(protocol, success(protocol)).await.unwrap(),
             "你好\n世界"
         );
         let other_protocol = if protocol == AiProtocol::Openai {
@@ -248,37 +264,41 @@ fn protocols_use_their_own_parameters_and_response_paths() {
         } else {
             AiProtocol::Openai
         };
-        assert!(response_text(protocol, &success(other_protocol)).is_err());
+        assert!(fixture_text(protocol, success(other_protocol))
+            .await
+            .is_err());
     }
 }
 
-#[test]
-fn malformed_missing_or_empty_responses_are_errors() {
+#[tokio::test]
+async fn malformed_missing_or_empty_responses_are_errors() {
     for protocol in [AiProtocol::Openai, AiProtocol::OpenaiResponses] {
         for value in [json!(null), json!([]), json!({}), json!({"choices": []})] {
-            assert!(response_text(protocol, &value).is_err());
+            assert!(fixture_text(protocol, value).await.is_err());
         }
         for content in [json!(null), json!([]), json!(42), json!(" \n\t ")] {
             let value = match protocol {
-                AiProtocol::Openai => json!({"choices":[{"message":{"content":content}}]}),
+                AiProtocol::Openai => json!({"choices":[{"delta":{"content":content}}]}),
                 AiProtocol::OpenaiResponses => json!({"status":"completed", "output":[{
                     "type":"message", "status":"completed", "role":"assistant",
                     "content":[{"type":"output_text", "text":content}],
                 }]}),
             };
-            assert!(response_text(protocol, &value).is_err());
+            assert!(fixture_text(protocol, value).await.is_err());
         }
     }
 }
 
-#[test]
-fn business_errors_never_echo_provider_code_type_or_message() {
+#[tokio::test]
+async fn business_errors_never_echo_provider_code_type_or_message() {
     for protocol in [AiProtocol::Openai, AiProtocol::OpenaiResponses] {
         for error in [
             json!("fixture-private-text"),
             json!({"code":"fixture-private-key","type":"fixture-private-url","message":"fixture-private-text"}),
         ] {
-            let message = response_text(protocol, &json!({"error": error})).unwrap_err();
+            let message = fixture_text(protocol, json!({"error": error}))
+                .await
+                .unwrap_err();
             assert!(message.contains("业务错误"));
             assert!(!message.contains("fixture-private"));
         }
@@ -289,7 +309,7 @@ fn business_errors_never_echo_provider_code_type_or_message() {
 async fn all_interfaces_send_real_local_http_and_return_actual_model_and_utc() {
     let service = AiService::new().unwrap();
     for protocol in [AiProtocol::Openai, AiProtocol::OpenaiResponses] {
-        let server = MockServer::new(200, success(protocol));
+        let server = stream_server(protocol, success(protocol));
         let draft = config(protocol, &server.endpoint);
         let result = service.translate(&request(), &draft).await.unwrap();
         assert_eq!(result.source_text, request().text);
@@ -321,7 +341,7 @@ async fn all_interfaces_send_real_local_http_and_return_actual_model_and_utc() {
 
 #[tokio::test]
 async fn local_compatible_chat_uses_v1_and_no_auth_for_an_empty_key() {
-    let server = MockServer::new(200, success(AiProtocol::Openai));
+    let server = stream_server(AiProtocol::Openai, success(AiProtocol::Openai));
     let mut address = Url::parse(&server.endpoint).unwrap();
     address.set_path("/");
     let draft = AiConfig {
@@ -339,13 +359,13 @@ async fn local_compatible_chat_uses_v1_and_no_auth_for_an_empty_key() {
     assert!(!http.to_ascii_lowercase().contains("authorization:"));
     let body = captured_body(&http);
     assert_eq!(body["messages"][1]["content"], request().text);
-    assert_eq!(body["stream"], false);
+    assert_eq!(body["stream"], true);
     assert!(body.get("options").is_none());
 }
 
 #[tokio::test]
 async fn connection_test_uses_an_independent_snapshot_and_fixed_sample() {
-    let server = MockServer::new(200, success(AiProtocol::Openai));
+    let server = stream_server(AiProtocol::Openai, success(AiProtocol::Openai));
     let draft = config(AiProtocol::Openai, &server.endpoint);
     let before = draft.clone();
     let result = AiService::new().unwrap().test(&draft).await.unwrap();
@@ -361,7 +381,7 @@ async fn connection_test_uses_an_independent_snapshot_and_fixed_sample() {
 
 #[tokio::test]
 async fn invalid_inputs_and_missing_config_do_not_send_http() {
-    let server = MockServer::new(200, success(AiProtocol::Openai));
+    let server = stream_server(AiProtocol::Openai, success(AiProtocol::Openai));
     let service = AiService::new().unwrap();
     let draft = config(AiProtocol::Openai, &server.endpoint);
     for invalid in [
@@ -462,7 +482,7 @@ async fn network_and_invalid_header_errors_do_not_echo_url_or_key() {
 
 #[tokio::test]
 async fn redirect_is_reported_without_contacting_the_destination() {
-    let destination = MockServer::new(200, success(AiProtocol::Openai));
+    let destination = stream_server(AiProtocol::Openai, success(AiProtocol::Openai));
     let (endpoint, server) = redirect_server(&destination.endpoint);
     let error = AiService::new()
         .unwrap()

@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
   Bootstrap,
@@ -8,6 +8,8 @@ import type {
   HistoryRecord,
   Page,
   Settings,
+  PopupSnapshot,
+  TargetLanguage,
   Translation,
   TranslationRequest,
 } from '../types/desktop'
@@ -19,7 +21,10 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
 }
 export const desktop = {
   bootstrap: () => call<Bootstrap>('bootstrap'),
-  translate: (request: TranslationRequest) => call<Translation>('translate', { request }),
+  async translate(request: TranslationRequest, onDelta: (text: string) => void) {
+    if (!isTauri()) throw new Error('DESKTOP_REQUIRED')
+    return invoke<Translation>('translate', { request, onDelta: new Channel<string>(onDelta) })
+  },
   testAiConnection: (config: AiConfig) => call<Translation>('test_ai_connection', { config }),
   listAiModels: (config: AiConfig) => call<string[]>('list_ai_models', { config }),
   openOfficialWebsite: () => call<void>('open_official_website'),
@@ -36,13 +41,35 @@ export const desktop = {
   deleteFavorite: (id: number) => call<void>('delete_favorite', { id }),
   exportFavorites: () => call<string | null>('export_favorites'),
   copyText: (text: string) => call<void>('copy_text', { text }),
-  async onClipboard(handler: (text: string) => void): Promise<UnlistenFn> {
-    if (!isTauri()) return () => {}
-    return listen<string>('desktop-clipboard', (event) => handler(event.payload))
-  },
   async onNavigate(handler: (page: string) => void): Promise<UnlistenFn> {
     if (!isTauri()) return () => {}
     return listen<string>('desktop-navigate', (event) => handler(event.payload))
+  },
+}
+
+export const popup = {
+  startDragging: () => call<void>('popup_start_drag'),
+  snapshot: () => call<PopupSnapshot>('popup_snapshot'),
+  ready: (requestId: number) => call<void>('popup_ready', { requestId }),
+  retranslate: (requestId: number, request: TranslationRequest) =>
+    call<PopupSnapshot>('popup_retranslate', { requestId, request }),
+  pin: (requestId: number, pinned: boolean) => call<void>('popup_pin', { requestId, pinned }),
+  copy: (requestId: number) => call<void>('popup_copy', { requestId }),
+  dismiss: (requestId: number) => call<void>('popup_dismiss', { requestId }),
+  async onUpdate(handler: (version: number) => void): Promise<UnlistenFn> {
+    if (!isTauri()) return () => {}
+    return listen<number>('selection-popup-updated', (event) => handler(event.payload), {
+      target: { kind: 'WebviewWindow', label: 'selection-popup' },
+    })
+  },
+}
+
+export const targetLanguage = {
+  get: () => call<TargetLanguage>('get_target_language'),
+  set: (language: string) => call<TargetLanguage>('set_target_language', { language }),
+  async onChange(handler: (value: TargetLanguage) => void): Promise<UnlistenFn> {
+    if (!isTauri()) return () => {}
+    return listen<TargetLanguage>('target-language-changed', (event) => handler(event.payload))
   },
 }
 

@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { desktop } from '../services/desktop'
 import { mount, flushPromises } from '@vue/test-utils'
 import TranslateView from './TranslateView.vue'
-import { bootstrap, track, translation, chooseSelect } from '../test/support'
+import { setLocale } from '../i18n'
+import { bootstrap, track, translation, chooseSelect, deferred } from '../test/support'
+import { mockTargetLanguage } from '../test/targetLanguage'
 
 vi.mock('../services/desktop', () => ({
+  targetLanguage: { get: vi.fn(), set: vi.fn(), onChange: vi.fn() },
   desktop: Object.fromEntries(
     [
       'bootstrap',
@@ -20,14 +23,51 @@ vi.mock('../services/desktop', () => ({
       'deleteFavorite',
       'exportFavorites',
       'copyText',
-      'onClipboard',
       'onNavigate',
     ].map((key) => [key, vi.fn()]),
   ),
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }))
 
+beforeEach(() => mockTargetLanguage('en'))
+
 describe('translation view', () => {
+  it.each([
+    ['AI 流式响应格式无效', 'invalid translation stream'],
+    ['AI 服务返回流式错误，请检查配置或重试', 'streaming error'],
+    ['AI 请求超时，请重试', 'timed out'],
+    ['AI 服务拒绝了此次翻译请求', 'declined'],
+  ])('shows a localized stream error for %s', async (serverError, expected) => {
+    setLocale('en_US')
+    vi.mocked(desktop.translate).mockRejectedValueOnce(serverError)
+    const view = track(mount(TranslateView, { props: { data: bootstrap() } }))
+    await view.get('textarea').setValue('one')
+    await view.get('textarea').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(view.get('[role="alert"]').text()).toContain(expected)
+  })
+  it('displays incoming text before completion and enables copy and favorite only for the final translation', async () => {
+    const reply = deferred<ReturnType<typeof translation>>()
+    vi.mocked(desktop.translate).mockReturnValueOnce(reply.promise)
+    const view = track(mount(TranslateView, { props: { data: bootstrap() } }))
+    await view.get('textarea').setValue('one')
+    await view.get('textarea').trigger('keydown', { key: 'Enter' })
+    const progress = vi.mocked(desktop.translate).mock.calls[0]![1]
+    progress('第')
+    progress('一段')
+    await flushPromises()
+    expect(view.get('.result-panel').attributes('aria-busy')).toBe('true')
+    expect(view.get('.result-content').text()).toBe('第一段')
+    expect(view.get('[aria-label="复制 译文"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[aria-label="收藏"]').attributes('disabled')).toBeDefined()
+    reply.resolve(translation('one', '第一段译文'))
+    await flushPromises()
+    progress('late')
+    await flushPromises()
+    expect(view.get('.result-content').text()).toBe('第一段译文')
+    await view.get('[aria-label="复制 译文"]').trigger('click')
+    expect(desktop.copyText).toHaveBeenCalledExactlyOnceWith('第一段译文')
+  })
   it('keeps auto detection exclusive to source and sends the languages selected after swapping', async () => {
     const wrapper = track(mount(TranslateView, { props: { data: bootstrap() } }))
     expect(wrapper.get('#translate-source-lang').attributes('aria-label')).toBe('源语言')
@@ -50,11 +90,14 @@ describe('translation view', () => {
     await wrapper.get('textarea').setValue('one')
     await wrapper.get('textarea').trigger('keydown', { key: 'Enter' })
     await flushPromises()
-    expect(desktop.translate).toHaveBeenCalledExactlyOnceWith({
-      text: 'one',
-      sourceLang: 'fr',
-      targetLang: 'ja',
-    })
+    expect(desktop.translate).toHaveBeenCalledExactlyOnceWith(
+      {
+        text: 'one',
+        sourceLang: 'fr',
+        targetLang: 'ja',
+      },
+      expect.any(Function),
+    )
   })
   it('handles Enter and Shift+Enter independently', async () => {
     const wrapper = track(mount(TranslateView, { props: { data: bootstrap() } }))

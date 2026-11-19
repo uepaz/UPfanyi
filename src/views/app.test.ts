@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
-import { desktop } from '../services/desktop'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { desktop, popup, targetLanguage } from '../services/desktop'
 import { mount, flushPromises } from '@vue/test-utils'
 import App from '../App.vue'
-import { bootstrap, track, button, chooseSelect, recordShortcut } from '../test/support'
+import SelectionPopup from './SelectionPopup.vue'
+import type { PopupSnapshot, TargetLanguage } from '../types/desktop'
+import { mockTargetLanguage } from '../test/targetLanguage'
+import { bootstrap, track, button, chooseSelect, recordShortcut, deferred } from '../test/support'
 
 vi.mock('../services/desktop', () => ({
+  targetLanguage: { get: vi.fn(), set: vi.fn(), onChange: vi.fn() },
+  popup: { snapshot: vi.fn(), retranslate: vi.fn(), onUpdate: vi.fn() },
   desktop: Object.fromEntries(
     [
       'bootstrap',
@@ -21,14 +26,134 @@ vi.mock('../services/desktop', () => ({
       'deleteFavorite',
       'exportFavorites',
       'copyText',
-      'onClipboard',
       'onNavigate',
     ].map((key) => [key, vi.fn()]),
   ),
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }))
 
+beforeEach(() => mockTargetLanguage('en'))
+
 describe('desktop startup', () => {
+  it('shares the target both ways, preserves drafts and only translates in the initiating window', async () => {
+    const data = bootstrap()
+    data.settings.autoTranslate = true
+    vi.mocked(desktop.bootstrap).mockResolvedValue(data)
+    const selection = {
+      selectionId: 1,
+      requestId: 1,
+      locale: 'zh_CN',
+      sourceText: 'Selected text',
+      sourceLang: 'zh',
+      targetLang: 'en',
+      status: 'success' as const,
+      translation: 'Original result',
+      historySaved: true,
+    }
+    const snapshot: PopupSnapshot = {
+      selection,
+      preparing: null,
+      version: 1,
+      dismissRequestId: 1,
+      pinned: true,
+    }
+    vi.mocked(popup.snapshot).mockResolvedValue(snapshot)
+    vi.mocked(popup.onUpdate).mockResolvedValue(() => {})
+    vi.mocked(popup.retranslate).mockImplementation(async (id, request) => ({
+      ...snapshot,
+      version: id + 1,
+      dismissRequestId: id + 1,
+      selection: { ...selection, ...request, sourceText: request.text, requestId: id + 1 },
+    }))
+    const main = track(mount(App))
+    const small = track(mount(SelectionPopup))
+    await flushPromises()
+    await small.get('.popup-disclosure').trigger('click')
+    await small.get('textarea').setValue('Edited selection')
+    await chooseSelect(main, 'translate-target-lang', 'ja')
+    await flushPromises()
+    expect(small.get('#popup-target').attributes('data-value')).toBe('ja')
+    expect(small.get<HTMLTextAreaElement>('textarea').element.value).toBe('Edited selection')
+    expect(small.get('.popup-result-language').text()).toContain('英语')
+    expect(small.get('.popup-translation').text()).toBe('Original result')
+    expect(popup.retranslate).not.toHaveBeenCalled()
+    await small.get('.popup-retranslate').trigger('click')
+    await flushPromises()
+    expect(popup.retranslate).toHaveBeenCalledExactlyOnceWith(1, {
+      text: 'Edited selection',
+      sourceLang: 'zh',
+      targetLang: 'ja',
+    })
+    const editor = main.get<HTMLTextAreaElement>('.translate-page textarea')
+    await editor.setValue('Main draft')
+    await editor.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    vi.mocked(desktop.translate).mockClear()
+    await main.get('[aria-label="设置"]').trigger('click')
+    await chooseSelect(main, 'settings-locale', 'en_US')
+    await chooseSelect(small, 'popup-target', 'fr')
+    await flushPromises()
+    expect(main.get('#translate-target-lang').attributes('data-value')).toBe('fr')
+    expect(main.get('#translate-source-lang').attributes('data-value')).toBe('auto')
+    expect(main.get('#settings-locale').attributes('data-value')).toBe('en_US')
+    expect(editor.element.value).toBe('Main draft')
+    expect(vi.mocked(targetLanguage.set).mock.calls).toEqual([['ja'], ['fr']])
+    expect(popup.retranslate).toHaveBeenCalledTimes(2)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(desktop.translate).not.toHaveBeenCalled()
+    expect(desktop.saveSettings).not.toHaveBeenCalled()
+    await main.get('[aria-label="翻译"]').trigger('click')
+    await editor.trigger('keydown', { key: 'Enter' })
+    expect(desktop.translate).toHaveBeenCalledExactlyOnceWith(
+      { text: 'Main draft', sourceLang: 'auto', targetLang: 'fr' },
+      expect.any(Function),
+    )
+    const reopened = track(mount(App))
+    await flushPromises()
+    expect(reopened.get('#translate-target-lang').attributes('data-value')).toBe('fr')
+  })
+
+  it('ignores a late initial read and older events, and restores the last saved choice on failure', async () => {
+    const startup = deferred<TargetLanguage>()
+    vi.mocked(targetLanguage.get).mockReturnValueOnce(startup.promise)
+    const main = track(mount(App))
+    await flushPromises()
+    const notify = vi.mocked(targetLanguage.onChange).mock.calls[0]![0]
+    notify({ language: 'de', revision: 3 })
+    startup.resolve({ language: 'en', revision: 0 })
+    notify({ language: 'fr', revision: 2 })
+    await flushPromises()
+    expect(main.get('#translate-target-lang').attributes('data-value')).toBe('de')
+    vi.mocked(targetLanguage.set).mockRejectedValueOnce(new Error('write failed'))
+    await chooseSelect(main, 'translate-target-lang', 'ko')
+    await flushPromises()
+    expect(main.get('#translate-target-lang').attributes('data-value')).toBe('de')
+    expect(main.get('[role="alert"]').text()).toContain('目标语言保存失败')
+    expect(desktop.translate).not.toHaveBeenCalled()
+  })
+
+  it('keeps rapid clicks in order and honors a newer change that arrived before the save receipt', async () => {
+    const main = track(mount(App))
+    await flushPromises()
+    const first = deferred<TargetLanguage>()
+    const second = deferred<TargetLanguage>()
+    vi.mocked(targetLanguage.set)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    await chooseSelect(main, 'translate-target-lang', 'fr')
+    await chooseSelect(main, 'translate-target-lang', 'de')
+    expect(main.get('#translate-target-lang').attributes('data-value')).toBe('de')
+    expect(targetLanguage.set).toHaveBeenCalledExactlyOnceWith('fr')
+    first.resolve({ language: 'fr', revision: 1 })
+    await flushPromises()
+    expect(vi.mocked(targetLanguage.set).mock.calls).toEqual([['fr'], ['de']])
+    const notify = vi.mocked(targetLanguage.onChange).mock.calls[0]![0]
+    notify({ language: 'ja', revision: 3 })
+    second.resolve({ language: 'de', revision: 2 })
+    await flushPromises()
+    expect(main.get('#translate-target-lang').attributes('data-value')).toBe('ja')
+    expect(desktop.translate).not.toHaveBeenCalled()
+  })
   it('closes body popups when native events or settings sections switch the visible scope', async () => {
     vi.mocked(desktop.listAiModels).mockResolvedValue(['available-model'])
     const wrapper = track(mount(App))
@@ -48,7 +173,7 @@ describe('desktop startup', () => {
     await flushPromises()
     await wrapper.get('.app-combobox-toggle').trigger('click')
     expect(document.getElementById('ai-model-listbox')).not.toBeNull()
-    vi.mocked(desktop.onClipboard).mock.calls[0]![0]('clipboard')
+    await wrapper.get('[aria-label="翻译"]').trigger('click')
     await flushPromises()
     expect(document.querySelector('[role="listbox"]')).toBeNull()
     expect(desktop.saveSettings).not.toHaveBeenCalled()
@@ -120,6 +245,37 @@ describe('desktop startup', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('需要在 Tauri 桌面应用中运行')
     expect(wrapper.find('.translate-page').exists()).toBe(false)
   })
+  it('dismisses the settings confirmation two seconds after the most recent successful save', async () => {
+    vi.useFakeTimers()
+    const data = bootstrap()
+    const first = deferred<ReturnType<typeof bootstrap>>()
+    vi.mocked(desktop.saveSettings)
+      .mockReturnValueOnce(first.promise)
+      .mockImplementation(async (settings, aiChannels) => ({ ...data, settings, aiChannels }))
+    const wrapper = track(mount(App))
+    await flushPromises()
+    await wrapper.get('[aria-label="设置"]').trigger('click')
+    const form = wrapper.get('.settings-form')
+    const toggle = form.get('.settings-section input[role="switch"]')
+    const notice = () => form.find('.settings-footer [role="status"]')
+
+    await toggle.setValue(true)
+    await form.trigger('submit')
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(notice().exists()).toBe(false)
+    first.resolve({ ...data, settings: { ...data.settings, alwaysOnTop: true } })
+    await flushPromises()
+    expect(notice().text()).toBe('设置已保存')
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await toggle.setValue(false)
+    await form.trigger('submit')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(notice().text()).toBe('设置已保存')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(notice().exists()).toBe(false)
+  })
   it('changes the entire interface after saving the locale', async () => {
     const wrapper = track(mount(App))
     await flushPromises()
@@ -148,21 +304,30 @@ describe('desktop startup', () => {
     ).toBeNull()
     await wrapper.get('#translate-target-lang').trigger('keydown', { key: 'Escape' })
   })
-  it('translates the copied selection using saved defaults after manual language changes', async () => {
+  it('preserves the main editor and its language choices when the tray opens settings', async () => {
     const original = bootstrap()
     original.settings.defaultSourceLang = 'en'
     original.settings.defaultTargetLang = 'zh'
+    mockTargetLanguage('zh')
     vi.mocked(desktop.bootstrap).mockResolvedValue(original)
     const wrapper = track(mount(App))
     await flushPromises()
     await chooseSelect(wrapper, 'translate-source-lang', 'ja')
     await chooseSelect(wrapper, 'translate-target-lang', 'fr')
-    vi.mocked(desktop.onClipboard).mock.calls[0]![0]('clipboard')
+    const editor = wrapper.get('.translate-page textarea')
+    await editor.setValue('main editor draft')
+    vi.mocked(desktop.onNavigate).mock.calls[0]![0]('settings')
     await flushPromises()
-    expect(desktop.translate).toHaveBeenCalledExactlyOnceWith({
-      text: 'clipboard',
-      sourceLang: 'en',
-      targetLang: 'zh',
-    })
+    expect(desktop.translate).not.toHaveBeenCalled()
+    await wrapper.get('[aria-label="翻译"]').trigger('click')
+    await editor.trigger('keydown', { key: 'Enter' })
+    expect(desktop.translate).toHaveBeenCalledExactlyOnceWith(
+      {
+        text: 'main editor draft',
+        sourceLang: 'ja',
+        targetLang: 'fr',
+      },
+      expect.any(Function),
+    )
   })
 })

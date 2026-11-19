@@ -2,6 +2,28 @@ import { computed, ref } from 'vue'
 
 const zh = {
   appName: 'UP翻译',
+  popupTitle: '选区翻译',
+  pinWindow: '固定窗口',
+  closeWindow: '关闭窗口',
+  viewOriginal: '查看原文',
+  copyTranslation: '复制译文',
+  retranslate: '重新翻译',
+  historyNotSaved: '历史未保存',
+  popupSettings: '无法读取已保存的设置，请检查 AI 渠道后重试。',
+  popupEndpoint: '请在 AI 翻译设置中检查服务地址。',
+  popupModel: '请在 AI 翻译设置中选择模型。',
+  popupKey: '请检查当前 AI 渠道的密钥和访问权限。',
+  popupNetwork: '无法连接 AI 服务，请检查连接后重试。',
+  popupTimeout: '翻译请求超时，请重试。',
+  streamInvalid: 'AI 流式响应格式无效',
+  streamFailed: 'AI 服务返回流式错误，请检查配置或重试',
+  streamTimeout: 'AI 请求超时，请重试',
+  streamRefused: 'AI 服务拒绝了此次翻译请求',
+  streamIncomplete: 'AI 流式响应未完成，请重试',
+  streamUnsupported: 'AI 服务未返回流式译文，请检查模型和接口设置',
+  popupService: 'AI 服务未能返回译文，请检查服务或稍后重试。',
+  popupActionFailed: '操作失败，请重试。',
+  popupCopyFailed: '复制失败，请重试。',
   translate: '翻译',
   history: '历史记录',
   favorites: '收藏词本',
@@ -10,6 +32,9 @@ const zh = {
   result: '译文',
   sourceLang: '源语言',
   targetLang: '目标语言',
+  resultLanguage: '译文语言',
+  targetLanguageSaveFailed: '目标语言保存失败，请重新选择。',
+  targetLanguageSyncFailed: '暂时无法同步目标语言，正在重试。',
   autoTranslate: '自动翻译',
   swap: '交换语言',
   inputPlaceholder: '在这里输入或粘贴文字…',
@@ -65,7 +90,6 @@ const zh = {
   connectionTest: '测试连接',
   testing: '测试中…',
   testSuccess: '连接成功',
-  testHint: '使用当前未保存配置测试，不写入历史。',
   saveSettings: '保存设置',
   saving: '保存中…',
   saved: '设置已保存',
@@ -105,18 +129,15 @@ const zh = {
   visitOfficialWebsite: '访问官方网站',
   openingOfficialWebsite: '正在打开…',
   officialWebsiteOpenError: '无法打开官方网站，请稍后重试。',
-  aiChannelHint: '各渠道保留独立配置；点击保存设置后统一生效。',
   interfaceType: '接口类型',
   modelPlaceholder: '搜索、选择或输入模型名',
   loadModels: '获取模型',
   loadingModels: '获取中…',
   retryModels: '重新获取',
-  modelHint: '获取后可输入关键词筛选，也可手填模型名；列表不保证模型支持当前接口。',
   modelManualHint: '仍可手动填写模型。',
   modelsError: '获取模型失败',
   modelsLoaded: '已获取模型数量：',
   modelsEmpty: '服务未返回模型，可手动填写。',
-  apiKeyHint: '官方 OpenAI 地址需要密钥；其他兼容服务按需填写。',
   auto: '自动检测',
   zh: '中文',
   en: '英语',
@@ -135,7 +156,6 @@ const zh = {
   ms: '马来语',
   nl: '荷兰语',
   pl: '波兰语',
-  securityHint: '密钥保存在本机数据目录，请妥善保护该目录。',
   aiHint: '选择可用模型；提示词可使用 {source_lang} 和 {target_lang}。',
   preferences: '偏好',
   configured: '已配置',
@@ -150,6 +170,29 @@ const zh = {
 type MessageKey = keyof typeof zh
 const en: Record<MessageKey, string> = {
   appName: 'UP Translate',
+  popupTitle: 'Selection translation',
+  pinWindow: 'Pin window',
+  closeWindow: 'Close window',
+  viewOriginal: 'View original',
+  copyTranslation: 'Copy translation',
+  retranslate: 'Translate again',
+  historyNotSaved: 'History was not saved',
+  popupSettings: 'Could not read your settings. Check your AI channel and retry.',
+  popupEndpoint: 'Check the service address in AI translation settings.',
+  popupModel: 'Choose a model in AI translation settings.',
+  popupKey: 'Check the API key and permissions for the active AI channel.',
+  popupNetwork: 'Could not reach the AI service. Check your connection and retry.',
+  streamInvalid: 'The AI service returned an invalid translation stream.',
+  streamFailed: 'The AI service reported a streaming error. Check the settings or retry.',
+  streamTimeout: 'The translation timed out. Please retry.',
+  streamRefused: 'The AI service declined this translation request.',
+  streamIncomplete: 'The translation stream ended before it finished. Please retry.',
+  streamUnsupported:
+    'The service did not return a streaming translation. Check the model and API settings.',
+  popupTimeout: 'The translation timed out. Try again.',
+  popupService: 'The AI service could not return a translation. Please retry.',
+  popupActionFailed: 'The action failed. Please try again.',
+  popupCopyFailed: 'Copy failed. Please try again.',
   translate: 'Translate',
   history: 'History',
   favorites: 'Wordbook',
@@ -158,6 +201,9 @@ const en: Record<MessageKey, string> = {
   result: 'Translation',
   sourceLang: 'Source language',
   targetLang: 'Target language',
+  resultLanguage: 'Translation language',
+  targetLanguageSaveFailed: 'Could not save the target language. Please select it again.',
+  targetLanguageSyncFailed: 'Could not sync the target language. Retrying.',
   autoTranslate: 'Auto translate',
   swap: 'Swap languages',
   inputPlaceholder: 'Type or paste your text here…',
@@ -214,7 +260,6 @@ const en: Record<MessageKey, string> = {
   connectionTest: 'Test connection',
   testing: 'Testing…',
   testSuccess: 'Connection successful',
-  testHint: 'Test the current unsaved configuration without adding history.',
   saveSettings: 'Save settings',
   saving: 'Saving…',
   saved: 'Settings saved',
@@ -256,20 +301,15 @@ const en: Record<MessageKey, string> = {
   visitOfficialWebsite: 'Visit official website',
   openingOfficialWebsite: 'Opening…',
   officialWebsiteOpenError: 'Unable to open the official website. Please try again.',
-  aiChannelHint: 'Each channel keeps its own configuration. Save settings to apply all changes.',
   interfaceType: 'API type',
   modelPlaceholder: 'Search, select or enter a model',
   loadModels: 'Get models',
   loadingModels: 'Fetching…',
   retryModels: 'Retry models',
-  modelHint:
-    'Fetch models to search the list, or enter a name. Listed models may not support this API.',
   modelManualHint: 'You can still enter a model manually.',
   modelsError: 'Unable to fetch models',
   modelsLoaded: 'Models fetched:',
   modelsEmpty: 'The service returned no models. You can enter one manually.',
-  apiKeyHint:
-    'The official OpenAI endpoint requires a key. For other compatible services, enter a key if required.',
   auto: 'Detect language',
   zh: 'Chinese',
   en: 'English',
@@ -288,7 +328,6 @@ const en: Record<MessageKey, string> = {
   ms: 'Malay',
   nl: 'Dutch',
   pl: 'Polish',
-  securityHint: 'Secrets are stored in your local data directory. Keep this directory secure.',
   aiHint: 'Choose an available model. Prompts support {source_lang} and {target_lang}.',
   preferences: 'Preferences',
   configured: 'Configured',
@@ -324,10 +363,24 @@ export const languageCodes = [
 export function setLocale(value: string) {
   locale.value = value
 }
+export function messageForLocale(value: string, key: string) {
+  return (value.startsWith('en') ? en : zh)[key as MessageKey] ?? key
+}
+const serviceErrors = new Map<string, MessageKey>([
+  ['DESKTOP_REQUIRED', 'desktopRequired'],
+  [zh.streamInvalid, 'streamInvalid'],
+  [zh.streamFailed, 'streamFailed'],
+  [zh.streamTimeout, 'streamTimeout'],
+  [zh.streamRefused, 'streamRefused'],
+  [zh.streamIncomplete, 'streamIncomplete'],
+  [zh.streamUnsupported, 'streamUnsupported'],
+])
 export function useI18n() {
   const isEnglish = computed(() => locale.value.startsWith('en'))
-  const t = (key: string) => (isEnglish.value ? en : zh)[key as MessageKey] ?? key
-  const failure = (message: string) =>
-    message === 'DESKTOP_REQUIRED' ? t('desktopRequired') : message
+  const t = (key: string) => messageForLocale(locale.value, key)
+  const failure = (message: string) => {
+    const key = serviceErrors.get(message)
+    return key ? t(key) : message
+  }
   return { locale, isEnglish, t, failure }
 }

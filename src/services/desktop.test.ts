@@ -2,9 +2,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { desktop } from './desktop'
+import { desktop, popup, targetLanguage } from './desktop'
 import type { AiChannels, AiConfig, Settings, TranslationRequest } from '../types/desktop'
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+  isTauri: vi.fn(),
+  Channel: class {
+    readonly onmessage: (text: string) => void
+    constructor(onmessage: (text: string) => void) {
+      this.onmessage = onmessage
+    }
+  },
+}))
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
 beforeEach(() => {
   vi.resetAllMocks()
@@ -29,12 +38,31 @@ describe('desktop IPC contract', () => {
   })
   it('passes the translation DTO under the named request argument', async () => {
     const request: TranslationRequest = { text: 'test', sourceLang: 'auto', targetLang: 'en' }
-    await desktop.translate(request)
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('translate', { request })
+    const onDelta = vi.fn()
+    await desktop.translate(request, onDelta)
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('translate', {
+      request,
+      onDelta: expect.objectContaining({ onmessage: onDelta }),
+    })
   })
   it('opens only the official website command without accepting URL or configuration arguments', async () => {
     await desktop.openOfficialWebsite()
     expect(invoke).toHaveBeenCalledExactlyOnceWith('open_official_website', undefined)
+  })
+  it('reads, writes and subscribes to the target language independently of full settings', async () => {
+    await targetLanguage.get()
+    await targetLanguage.set('fr')
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['get_target_language', undefined],
+      ['set_target_language', { language: 'fr' }],
+    ])
+    const changed = vi.fn()
+    await targetLanguage.onChange(changed)
+    const [event, listener] = vi.mocked(listen).mock.calls[0]!
+    expect(event).toBe('target-language-changed')
+    const payload = { revision: 2, language: 'fr' }
+    listener({ event, id: 1, payload })
+    expect(changed).toHaveBeenCalledExactlyOnceWith(payload)
   })
   it('passes one AI configuration to connection testing without saving it', async () => {
     const config: AiConfig = {
@@ -114,14 +142,36 @@ describe('desktop IPC contract', () => {
     vi.mocked(invoke).mockResolvedValue(null)
     expect(await desktop.exportFavorites()).toBeNull()
   })
-  it('unwraps the clipboard payload and exposes listener cleanup', async () => {
+  it('sends the active attempt, text and language pair to the popup translation command', async () => {
+    await popup.snapshot()
+    await popup.startDragging()
+    await popup.ready(11)
+    const request = { text: 'Edited source', sourceLang: 'ja', targetLang: 'en' }
+    await popup.retranslate(11, request)
+    await popup.pin(11, true)
+    await popup.copy(11)
+    await popup.dismiss(11)
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ['popup_snapshot', undefined],
+      ['popup_start_drag', undefined],
+      ['popup_ready', { requestId: 11 }],
+      ['popup_retranslate', { requestId: 11, request }],
+      ['popup_pin', { requestId: 11, pinned: true }],
+      ['popup_copy', { requestId: 11 }],
+      ['popup_dismiss', { requestId: 11 }],
+    ])
+  })
+  it('delivers popup version notifications scoped to the result window', async () => {
     const cleanup = vi.fn()
     vi.mocked(listen).mockResolvedValue(cleanup)
     const handler = vi.fn()
-    const unlisten = await desktop.onClipboard(handler)
+    const unlisten = await popup.onUpdate(handler)
+    expect(listen).toHaveBeenCalledWith('selection-popup-updated', expect.any(Function), {
+      target: { kind: 'WebviewWindow', label: 'selection-popup' },
+    })
     const callback = vi.mocked(listen).mock.calls[0]![1]
-    callback({ event: 'desktop-clipboard', id: 1, payload: 'copied text' })
-    expect(handler).toHaveBeenCalledExactlyOnceWith('copied text')
+    callback({ event: 'selection-popup-updated', id: 1, payload: 17 })
+    expect(handler).toHaveBeenCalledExactlyOnceWith(17)
     unlisten()
     expect(cleanup).toHaveBeenCalledTimes(1)
   })

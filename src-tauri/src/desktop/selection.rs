@@ -21,7 +21,7 @@ pub(super) fn capture_text(
     active: impl Fn() -> bool,
     mut pause: impl FnMut(),
     attempts: usize,
-) -> Option<String> {
+) -> Option<(String, ClipboardStamp)> {
     let valid = || active() && source.target_is_current();
     let mut ready = false;
     for _ in 0..attempts {
@@ -55,8 +55,10 @@ pub(super) fn capture_text(
             if !valid() {
                 return None;
             }
-            if text.is_some() && source.target_clipboard_stamp() == Some(stamp) {
-                return text;
+            if let Some(text) = text {
+                if source.target_clipboard_stamp() == Some(stamp) {
+                    return Some((text, stamp));
+                }
             }
         }
         pause();
@@ -137,7 +139,7 @@ mod tests {
         );
         source.released.set(false);
         let result = capture_text(&source, || true, || source.released.set(true), 4);
-        assert_eq!(result.as_deref(), Some("同一段文字\n"));
+        assert_eq!(result, Some(("同一段文字\n".into(), stamp(11).unwrap())));
         assert_eq!(*source.actions.borrow(), ["baseline", "copy", "read"]);
     }
 

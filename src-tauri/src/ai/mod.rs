@@ -3,11 +3,15 @@
 mod discovery;
 mod endpoint;
 mod protocol;
+mod stream;
+pub(crate) use stream::{INCOMPLETE, STREAM_UNSUPPORTED};
 
 #[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]
 mod responses_tests;
+#[cfg(test)]
+mod stream_tests;
 #[cfg(test)]
 mod tests;
 
@@ -19,10 +23,12 @@ use crate::{
 };
 use chrono::Utc;
 use endpoint::{models_endpoint, translation_endpoint, validate_endpoint};
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder, Response};
 use serde_json::Value;
 use std::time::Duration;
 use url::Url;
+
+const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct AiService {
     client: Client,
@@ -34,7 +40,8 @@ impl AiService {
             // 自定义端点可携带凭据和原文，禁止重定向到另一服务。
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(60))
+            // 流式译文可能生成很久；每次读到数据后重新计算等待时间。
+            .read_timeout(READ_TIMEOUT)
             .build()
             .map_err(|_| "无法初始化 AI 网络客户端".to_owned())?;
         Ok(Self { client })
@@ -44,6 +51,15 @@ impl AiService {
         &self,
         request: &TranslationRequest,
         config: &AiConfig,
+    ) -> Result<Translation, String> {
+        self.translate_stream(request, config, |_| {}).await
+    }
+
+    pub(crate) async fn translate_stream(
+        &self,
+        request: &TranslationRequest,
+        config: &AiConfig,
+        on_delta: impl FnMut(&str) + Send,
     ) -> Result<Translation, String> {
         if request.text.trim().is_empty() {
             return Err("请输入需要翻译的文本".into());
@@ -57,8 +73,9 @@ impl AiService {
             .post(endpoint)
             .json(&protocol::request_body(request, config));
         builder = with_auth(builder, config);
-        let value = send_json(builder).await?;
-        let translated_text = protocol::response_text(config.protocol, &value)?;
+        let response = send(builder.header(reqwest::header::ACCEPT, "text/event-stream")).await?;
+        let translated_text =
+            stream::read(response, config.protocol, READ_TIMEOUT, on_delta).await?;
         Ok(Translation {
             source_text: request.text.clone(),
             translated_text,
@@ -101,7 +118,7 @@ fn with_auth(builder: RequestBuilder, config: &AiConfig) -> RequestBuilder {
     }
 }
 
-async fn send_json(builder: RequestBuilder) -> Result<Value, String> {
+async fn send(builder: RequestBuilder) -> Result<Response, String> {
     let response = builder.send().await.map_err(|error| {
         // reqwest 错误可能包含完整 URL；翻译与模型发现共用脱敏边界。
         if error.is_timeout() {
@@ -119,7 +136,12 @@ async fn send_json(builder: RequestBuilder) -> Result<Value, String> {
             status.as_u16()
         ));
     }
-    let bytes = response
+    Ok(response)
+}
+
+async fn send_json(builder: RequestBuilder) -> Result<Value, String> {
+    let bytes = send(builder.timeout(READ_TIMEOUT))
+        .await?
         .bytes()
         .await
         .map_err(|_| "无法读取 AI 响应".to_owned())?;

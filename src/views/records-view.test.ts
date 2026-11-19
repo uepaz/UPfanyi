@@ -4,7 +4,9 @@ import { desktop } from '../services/desktop'
 import { mount, flushPromises } from '@vue/test-utils'
 import HistoryView from './HistoryView.vue'
 import FavoritesView from './FavoritesView.vue'
-import { track, button, favorite } from '../test/support'
+import RecordTime from '../components/RecordTime.vue'
+import { setLocale } from '../i18n'
+import { track, button, history, favorite } from '../test/support'
 
 vi.mock('../services/desktop', () => ({
   desktop: Object.fromEntries(
@@ -21,7 +23,6 @@ vi.mock('../services/desktop', () => ({
       'deleteFavorite',
       'exportFavorites',
       'copyText',
-      'onClipboard',
       'onNavigate',
     ].map((key) => [key, vi.fn()]),
   ),
@@ -29,6 +30,47 @@ vi.mock('../services/desktop', () => ({
 }))
 
 describe('record interactions', () => {
+  it.each([
+    {
+      locale: 'zh_CN',
+      local: new Date(2026, 10, 19, 17, 43, 28, 158),
+      expected: '2026-11-19 17:43:28',
+    },
+    { locale: 'en_US', local: new Date(2026, 0, 1, 0, 5, 7, 999), expected: '2026-01-01 00:05:07' },
+    { locale: 'en_US', local: new Date(2026, 5, 30, 23, 59, 58), expected: '2026-06-30 23:59:58' },
+  ])(
+    'shows local time in both lists and details in $locale',
+    async ({ locale, local, expected }) => {
+      setLocale(locale)
+      const createTime = local.toISOString()
+      vi.mocked(desktop.listHistory).mockResolvedValue({
+        items: [{ ...history, createTime }],
+        total: 1,
+      })
+      vi.mocked(desktop.listFavorites).mockResolvedValue({
+        items: [{ ...favorite, note: null, createTime }],
+        total: 1,
+      })
+      const views = [track(mount(HistoryView)), track(mount(FavoritesView))]
+      await flushPromises()
+      for (const view of views) {
+        await view.get('.record-item').trigger('click')
+        for (const selector of ['.record-item time', '.detail-heading time']) {
+          expect(view.get(selector).text()).toBe(expected)
+          expect(view.get(selector).attributes('datetime')).toBe(createTime)
+        }
+      }
+    },
+  )
+  it('respects explicit offsets and shows a placeholder for an unreadable timestamp', async () => {
+    const view = track(mount(RecordTime, { props: { timestamp: '2026-11-19T09:43:28.158Z' } }))
+    const local = view.get('time').text()
+    await view.setProps({ timestamp: '2026-11-19T01:43:28.158-08:00' })
+    expect(view.get('time').text()).toBe(local)
+    await view.setProps({ timestamp: 'unreadable' })
+    expect(view.text()).toBe('—')
+    expect(view.find('time').exists()).toBe(false)
+  })
   it('allows all-record operations when a search has no matches', async () => {
     vi.mocked(desktop.listHistory).mockResolvedValue({ items: [], total: 0 })
     vi.mocked(desktop.listFavorites).mockResolvedValue({ items: [], total: 0 })
@@ -49,8 +91,10 @@ describe('record interactions', () => {
     vi.mocked(desktop.listFavorites).mockResolvedValue({ items: [favorite, other], total: 2 })
     const wrapper = track(mount(FavoritesView))
     await flushPromises()
+    expect(wrapper.get('.record-item small').text()).toBe('original')
     await wrapper.findAll('.record-item')[0]!.trigger('click')
     await wrapper.get('#favorite-note').setValue('draft note')
+    expect(wrapper.get('.record-item small').text()).toBe('有未保存的修改')
     await wrapper.findAll('.record-item')[1]!.trigger('click')
     expect((wrapper.get('#favorite-note').element as HTMLTextAreaElement).value).toBe('other note')
     await wrapper.findAll('.record-item')[0]!.trigger('click')

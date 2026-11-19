@@ -15,7 +15,7 @@ pub(super) fn request_body(request: &TranslationRequest, config: &AiConfig) -> V
         AiProtocol::Openai => json!({
             "model": model,
             "messages": messages,
-            "stream": false,
+            "stream": true,
             "temperature": 0.3,
             "max_tokens": 4096,
         }),
@@ -23,24 +23,10 @@ pub(super) fn request_body(request: &TranslationRequest, config: &AiConfig) -> V
             "model": model,
             "instructions": prompt,
             "input": request.text,
-            "stream": false,
+            "stream": true,
             "store": false,
         }),
     }
-}
-
-pub(super) fn response_text(protocol: AiProtocol, value: &Value) -> Result<String, String> {
-    reject_business_error(value)?;
-    let path = match protocol {
-        AiProtocol::Openai => "/choices/0/message/content",
-        AiProtocol::OpenaiResponses => return responses_text(value),
-    };
-    nonempty_text(
-        value
-            .pointer(path)
-            .and_then(Value::as_str)
-            .ok_or("AI 响应缺少译文或译文格式无效")?,
-    )
 }
 
 pub(super) fn reject_business_error(value: &Value) -> Result<(), String> {
@@ -51,7 +37,8 @@ pub(super) fn reject_business_error(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn responses_text(value: &Value) -> Result<String, String> {
+pub(super) fn completed_response_text(value: &Value) -> Result<String, String> {
+    reject_business_error(value)?;
     if value.get("status").and_then(Value::as_str) != Some("completed") {
         return Err("AI Responses 响应未完成或状态无效，请重试".into());
     }
@@ -93,7 +80,7 @@ fn responses_text(value: &Value) -> Result<String, String> {
     nonempty_text(&text)
 }
 
-fn nonempty_text(text: &str) -> Result<String, String> {
+pub(super) fn nonempty_text(text: &str) -> Result<String, String> {
     let text = text.trim();
     if text.is_empty() {
         return Err("AI 服务返回空译文".into());
