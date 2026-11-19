@@ -98,3 +98,18 @@ $RECYCLE.BIN/
 .fuse_hidden*
 .trash-*
 .nfs*
+
+# Local settings, assistant files and specifications
+.agents/
+.codex/
+AGENTS.md
+CLAUDE.md
+/docs/
+/openspec/
+.task-artifacts/
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite3
+*.sqlite3-*

@@ -1,5 +1,8 @@
 package com.upfanyi.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.upfanyi.api.ApiFactory;
 import com.upfanyi.api.TranslateApi;
 import com.upfanyi.config.AppConfig;
@@ -46,16 +49,20 @@ public class SettingsController implements Initializable {
 
     private final AppConfig appConfig;
     private final ApiConfigDao apiConfigDao;
+    private final ObjectMapper objectMapper;
     private MainController mainController;
 
     // 动态API配置UI组件
     private final Map<String, Map<String, TextInputControl>> apiFieldsMap = new ConcurrentHashMap<>();
     private final Map<String, Label> apiStatusLabels = new ConcurrentHashMap<>();
     private final Map<String, Label> apiTestLabels = new ConcurrentHashMap<>();
+    private final Map<String, CheckBox> apiEnabledCheckBoxes = new ConcurrentHashMap<>();
+    private final Map<String, Spinner<Integer>> apiPrioritySpinners = new ConcurrentHashMap<>();
 
     public SettingsController() {
         this.appConfig = AppConfig.getInstance();
         this.apiConfigDao = new ApiConfigDao();
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -121,8 +128,10 @@ public class SettingsController implements Initializable {
         apiFieldsMap.clear();
         apiStatusLabels.clear();
         apiTestLabels.clear();
+        apiEnabledCheckBoxes.clear();
+        apiPrioritySpinners.clear();
 
-        List<String> apiNames = ApiFactory.getInstance().getRegisteredApis();
+        List<String> apiNames = ApiFactory.getInstance().getConfiguredApiOrder();
         for (String apiName : apiNames) {
             TranslateApi api = ApiFactory.getInstance().getApi(apiName);
             if (api == null) continue;
@@ -140,6 +149,7 @@ public class SettingsController implements Initializable {
     private TitledPane createApiConfigPane(TranslateApi api) {
         String apiName = api.getApiName();
         String displayName = api.getDisplayName();
+        ApiConfig config = apiConfigDao.findByName(apiName);
 
         VBox content = new VBox(8);
         content.setStyle("-fx-padding: 8;");
@@ -152,7 +162,18 @@ public class SettingsController implements Initializable {
         Label statusLabel = new Label();
         updateApiStatus(apiName, statusLabel);
         apiStatusLabels.put(apiName, statusLabel);
-        statusRow.getChildren().addAll(nameLabel, statusLabel);
+
+        CheckBox enabledCheckBox = new CheckBox(I18nUtil.get("api.enabled"));
+        enabledCheckBox.setSelected(config == null || config.isEnabled());
+        apiEnabledCheckBoxes.put(apiName, enabledCheckBox);
+
+        Label priorityLabel = new Label(I18nUtil.get("api.priority"));
+        Spinner<Integer> prioritySpinner = new Spinner<>(0, 999, config != null ? config.getPriority() : getDefaultPriority(apiName));
+        prioritySpinner.setEditable(true);
+        prioritySpinner.setPrefWidth(70);
+        apiPrioritySpinners.put(apiName, prioritySpinner);
+
+        statusRow.getChildren().addAll(nameLabel, statusLabel, enabledCheckBox, priorityLabel, prioritySpinner);
         content.getChildren().add(statusRow);
 
         // 描述
@@ -173,7 +194,7 @@ public class SettingsController implements Initializable {
         apiFieldsMap.put(apiName, fields);
 
         // 加载已保存的配置
-        loadApiConfigValues(api, fields);
+        loadApiConfigValues(api, fields, config);
 
         // 测试按钮行
         HBox testRow = new HBox(8);
@@ -232,16 +253,13 @@ public class SettingsController implements Initializable {
     /**
      * 加载API配置值
      */
-    private void loadApiConfigValues(TranslateApi api, Map<String, TextInputControl> fields) {
-        String apiName = api.getApiName();
-        ApiConfig config = apiConfigDao.findByName(apiName);
-
+    private void loadApiConfigValues(TranslateApi api, Map<String, TextInputControl> fields, ApiConfig config) {
         if (config != null) {
             for (ApiConfigField field : api.getConfigFields()) {
                 TextInputControl input = fields.get(field.getFieldName());
                 if (input == null) continue;
 
-                String value = getConfigValue(config, field.getFieldName(), api);
+                String value = getConfigValue(config, field.getFieldName());
                 if (value != null && !value.isEmpty()) {
                     input.setText(value);
                 }
@@ -252,50 +270,55 @@ public class SettingsController implements Initializable {
     /**
      * 获取配置值
      */
-    private String getConfigValue(ApiConfig config, String fieldName, TranslateApi api) {
-        // 先尝试从扩展配置获取
-        if (config.getExtraConfig() != null && !config.getExtraConfig().isEmpty()) {
-            // 简单JSON解析
-            String json = config.getExtraConfig();
-            String key = "\"" + fieldName + "\":";
-            int idx = json.indexOf(key);
-            if (idx >= 0) {
-                int start = idx + key.length();
-                while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"')) {
-                    start++;
-                }
-                int end = start;
-                while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ',' && json.charAt(end) != '}') {
-                    end++;
-                }
-                return json.substring(start, end).replace("\"", "").trim();
-            }
+    private String getConfigValue(ApiConfig config, String fieldName) {
+        String value = extractFromExtraConfig(config.getExtraConfig(), fieldName);
+        if (value != null) {
+            return value;
         }
 
         // 兼容旧配置格式
-        switch (fieldName) {
-            case "appId":
-            case "appKey":
-            case "apiKey":
-                return config.getApiKey();
-            case "secretKey":
-            case "appSecret":
-            case "apiSecret":
-                return config.getApiSecret();
-            case "endpoint":
-                return config.getEndpoint();
-            case "model":
-            case "modelName":
-                return config.getModelName();
-            default:
-                return null;
+        if (isApiKeyField(fieldName)) {
+            return config.getApiKey();
         }
+        if (isApiSecretField(fieldName)) {
+            return config.getApiSecret();
+        }
+        if ("endpoint".equals(fieldName)) {
+            return config.getEndpoint();
+        }
+        if ("model".equals(fieldName) || "modelName".equals(fieldName)) {
+            return config.getModelName();
+        }
+
+        return null;
+    }
+
+    private String extractFromExtraConfig(String extraConfig, String fieldName) {
+        if (extraConfig == null || extraConfig.isEmpty()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(extraConfig);
+            JsonNode value = root.get(fieldName);
+            return value != null && !value.isNull() ? value.asText() : null;
+        } catch (Exception e) {
+            logger.warn("解析API扩展配置失败: {}", e.getMessage());
+        }
+
+        return null;
     }
 
     /**
      * 更新API状态标签
      */
     private void updateApiStatus(String apiName, Label statusLabel) {
+        if (!ApiFactory.getInstance().isApiEnabled(apiName)) {
+            statusLabel.setText(I18nUtil.get("api.disabled"));
+            statusLabel.setStyle("-fx-text-fill: gray;");
+            return;
+        }
+
         boolean configured = ApiFactory.getInstance().isApiConfigured(apiName);
         if (configured) {
             statusLabel.setText(I18nUtil.get("api.configured"));
@@ -323,14 +346,18 @@ public class SettingsController implements Initializable {
             I18nUtil.setLocale(Locale.US);
         }
 
+        boolean clipboardMonitorEnabled = clipboardMonitorCheckBox.isSelected();
+        int clipboardMinLength = clipboardMinLengthSpinner.getValue();
+
         appConfig.setAlwaysOnTop(alwaysOnTopCheckBox.isSelected());
         appConfig.setMinimizeToTray(minimizeToTrayCheckBox.isSelected());
-        appConfig.setClipboardMonitor(clipboardMonitorCheckBox.isSelected());
+        appConfig.setClipboardMonitor(clipboardMonitorEnabled);
         appConfig.setAutoTranslate(autoTranslateCheckBox.isSelected());
-        appConfig.setClipboardMinLength(clipboardMinLengthSpinner.getValue());
+        appConfig.setClipboardMinLength(clipboardMinLength);
 
         // 保存所有API配置
         saveAllApiConfigs();
+        ApiFactory.getInstance().setApiConfigDao(apiConfigDao);
 
         // 保存到文件
         appConfig.save();
@@ -344,6 +371,8 @@ public class SettingsController implements Initializable {
         if (mainController != null) {
             mainController.updateAlwaysOnTop();
             mainController.updateAutoTranslate(autoTranslateCheckBox.isSelected());
+            mainController.updateClipboardMonitor(clipboardMonitorEnabled, clipboardMinLength);
+            mainController.refreshApiComboBox();
             mainController.refreshSidePanel();
         }
 
@@ -363,61 +392,60 @@ public class SettingsController implements Initializable {
 
             ApiConfig config = new ApiConfig();
             config.setApiName(apiName);
-            config.setEnabled(true);
+            config.setEnabled(getApiEnabled(apiName));
+            config.setPriority(getApiPriority(apiName));
 
             TranslateApi api = ApiFactory.getInstance().getApi(apiName);
             if (api == null) continue;
 
-            // 收集配置值
-            StringBuilder extraConfig = new StringBuilder("{");
-            boolean first = true;
+            ObjectNode extraConfig = objectMapper.createObjectNode();
 
             for (ApiConfigField field : api.getConfigFields()) {
                 TextInputControl input = fields.get(field.getFieldName());
                 if (input == null) continue;
 
+                String fieldName = field.getFieldName();
                 String value = input.getText();
+                api.setConfigValue(fieldName, value);
                 if (value != null && !value.isEmpty()) {
-                    // 设置到API实例
-                    api.setConfigValue(field.getFieldName(), value);
+                    extraConfig.put(fieldName, value);
 
-                    // 保存到配置对象
-                    switch (field.getFieldName()) {
-                        case "appId":
-                        case "appKey":
-                        case "apiKey":
-                            config.setApiKey(value);
-                            break;
-                        case "secretKey":
-                        case "appSecret":
-                        case "apiSecret":
-                            config.setApiSecret(value);
-                            break;
-                        case "endpoint":
-                            config.setEndpoint(value);
-                            break;
-                        case "model":
-                        case "modelName":
-                            config.setModelName(value);
-                            break;
-                        default:
-                            // 其他字段存入extraConfig
-                            if (!first) extraConfig.append(",");
-                            extraConfig.append("\"").append(field.getFieldName()).append("\":\"").append(value.replace("\"", "\\\"")).append("\"");
-                            first = false;
-                            break;
+                    // 同步写入旧列，兼容已有DAO/旧版本数据。
+                    if (isApiKeyField(fieldName)) {
+                        config.setApiKey(value);
+                    } else if (isApiSecretField(fieldName)) {
+                        config.setApiSecret(value);
+                    } else if ("endpoint".equals(fieldName)) {
+                        config.setEndpoint(value);
+                    } else if ("model".equals(fieldName) || "modelName".equals(fieldName)) {
+                        config.setModelName(value);
                     }
                 }
             }
 
-            extraConfig.append("}");
-            if (extraConfig.length() > 2) {
+            if (extraConfig.size() > 0) {
                 config.setExtraConfig(extraConfig.toString());
             }
 
             // 保存到数据库
             apiConfigDao.save(config);
         }
+    }
+
+    private boolean getApiEnabled(String apiName) {
+        CheckBox checkBox = apiEnabledCheckBoxes.get(apiName);
+        return checkBox == null || checkBox.isSelected();
+    }
+
+    private int getApiPriority(String apiName) {
+        Spinner<Integer> spinner = apiPrioritySpinners.get(apiName);
+        return spinner != null ? spinner.getValue() : getDefaultPriority(apiName);
+    }
+
+    private int getDefaultPriority(String apiName) {
+        List<String> registeredApis = ApiFactory.getInstance().getRegisteredApis();
+        int index = registeredApis.indexOf(apiName);
+        return index >= 0 ? index + 1 : 0;
     }
 
     /**
@@ -460,5 +488,22 @@ public class SettingsController implements Initializable {
                 });
             }
         }).start();
+    }
+
+    private boolean isApiKeyField(String fieldName) {
+        return "apiKey".equals(fieldName)
+                || "appKey".equals(fieldName)
+                || "appId".equals(fieldName)
+                || "secretId".equals(fieldName)
+                || "accessKeyId".equals(fieldName)
+                || "authKey".equals(fieldName)
+                || "subscriptionKey".equals(fieldName);
+    }
+
+    private boolean isApiSecretField(String fieldName) {
+        return "apiSecret".equals(fieldName)
+                || "secretKey".equals(fieldName)
+                || "appSecret".equals(fieldName)
+                || "accessKeySecret".equals(fieldName);
     }
 }

@@ -122,10 +122,6 @@ public class MainController implements Initializable {
      * 初始化API选择器
      */
     private void initApiComboBox() {
-        List<String> apis = translateService.getAvailableApis();
-        ObservableList<String> apiList = FXCollections.observableArrayList(apis);
-
-        apiComboBox.setItems(apiList);
         apiComboBox.setCellFactory(listView -> new ListCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -149,13 +145,7 @@ public class MainController implements Initializable {
             }
         });
 
-        // 选择默认API
-        String defaultApi = appConfig.getDefaultApi();
-        if (apis.contains(defaultApi)) {
-            apiComboBox.setValue(defaultApi);
-        } else if (!apis.isEmpty()) {
-            apiComboBox.setValue(apis.get(0));
-        }
+        refreshApiComboBox();
 
         // 添加API选择监听器，保存用户选择
         apiComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
@@ -164,6 +154,29 @@ public class MainController implements Initializable {
                 appConfig.save();
             }
         });
+    }
+
+    /**
+     * 刷新API选择器
+     */
+    public void refreshApiComboBox() {
+        List<String> apis = translateService.getAvailableApis();
+        ObservableList<String> apiList = FXCollections.observableArrayList(apis);
+
+        String selectedApi = apiComboBox.getValue();
+        apiComboBox.setItems(apiList);
+
+        // 选择默认API
+        String defaultApi = appConfig.getDefaultApi();
+        if (apis.contains(selectedApi)) {
+            apiComboBox.setValue(selectedApi);
+        } else if (apis.contains(defaultApi)) {
+            apiComboBox.setValue(defaultApi);
+        } else if (!apis.isEmpty()) {
+            apiComboBox.setValue(apis.get(0));
+        } else {
+            apiComboBox.setValue(null);
+        }
     }
 
     /**
@@ -261,9 +274,26 @@ public class MainController implements Initializable {
      * 初始化剪贴板监听
      */
     private void initClipboardMonitor() {
+        clipboardManager.setMinTextLength(appConfig.getClipboardMinLength());
         if (appConfig.isClipboardMonitor()) {
             clipboardManager.startMonitoring(this::handleClipboardText);
         }
+    }
+
+    /**
+     * 更新剪贴板监听状态
+     */
+    public void updateClipboardMonitor(boolean enabled, int minTextLength) {
+        clipboardManager.setMinTextLength(minTextLength);
+
+        if (enabled) {
+            clipboardManager.startMonitoring(this::handleClipboardText);
+        } else {
+            clipboardManager.stopMonitoring();
+        }
+
+        appConfig.setClipboardMonitor(enabled);
+        appConfig.save();
     }
 
     /**

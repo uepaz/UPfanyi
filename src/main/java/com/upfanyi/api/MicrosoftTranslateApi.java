@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Microsoft Translator API实现
@@ -39,7 +40,11 @@ public class MicrosoftTranslateApi implements TranslateApi {
     private String region = "global";
 
     public MicrosoftTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -75,13 +80,12 @@ public class MicrosoftTranslateApi implements TranslateApi {
             urlBuilder.append("&from=").append(sourceLang);
         }
 
-        // 构建请求体
-        ObjectNode requestBody = objectMapper.createObjectNode();
-        ArrayNode texts = requestBody.putArray("");
-        ObjectNode textObj = texts.addObject();
+        // 构建请求体 — 微软 API 要求直接是 JSON 数组 [{"Text":"..."}]
+        ArrayNode textsArray = objectMapper.createArrayNode();
+        ObjectNode textObj = textsArray.addObject();
         textObj.put("Text", text);
 
-        String jsonBody = objectMapper.writeValueAsString(requestBody);
+        String jsonBody = objectMapper.writeValueAsString(textsArray);
         logger.debug("微软翻译请求: {}", jsonBody);
 
         Request request = new Request.Builder()
@@ -98,7 +102,7 @@ public class MicrosoftTranslateApi implements TranslateApi {
                 throw new Exception("微软翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("微软翻译响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);

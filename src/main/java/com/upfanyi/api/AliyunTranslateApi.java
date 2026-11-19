@@ -2,6 +2,7 @@ package com.upfanyi.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.upfanyi.model.ApiConfigField;
 import com.upfanyi.model.Translation;
 import okhttp3.MediaType;
@@ -15,9 +16,11 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 阿里云机器翻译API实现
@@ -42,7 +45,11 @@ public class AliyunTranslateApi implements TranslateApi {
     private String accessKeySecret;
 
     public AliyunTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -68,31 +75,37 @@ public class AliyunTranslateApi implements TranslateApi {
 
         logger.debug("阿里云翻译: {} -> {}, 文本: {}", fromLang, toLang, text);
 
-        // 构建请求参数
         String sourceLanguage = convertLanguageCode(fromLang);
         String targetLanguage = convertLanguageCode(toLang);
-        String scene = "general";
 
-        // 构建请求体
-        String requestBody = String.format(
-                "{\"SourceLanguage\":\"%s\",\"TargetLanguage\":\"%s\",\"SourceText\":\"%s\",\"Scene\":\"%s\",\"FormatType\":\"text\"}",
-                sourceLanguage, targetLanguage, escapeJson(text), scene
-        );
+        // 使用 Jackson 构建请求体
+        ObjectNode bodyNode = objectMapper.createObjectNode();
+        bodyNode.put("SourceLanguage", sourceLanguage);
+        bodyNode.put("TargetLanguage", targetLanguage);
+        bodyNode.put("SourceText", text);
+        bodyNode.put("Scene", "general");
+        bodyNode.put("FormatType", "text");
+        String jsonBody = objectMapper.writeValueAsString(bodyNode);
 
-        // 生成签名
+        // 生成签名所需参数
         String timestamp = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
                 .format(java.time.ZonedDateTime.now(java.time.ZoneId.of("GMT")));
         String nonce = UUID.randomUUID().toString();
 
-        // 构建请求
+        // ACS3-HMAC-SHA256 签名
+        String authorization = generateAuthorization(jsonBody, timestamp, nonce);
+
         Request request = new Request.Builder()
                 .url(API_URL + "?Action=TranslateGeneral&Version=" + API_VERSION)
                 .addHeader("Content-Type", "application/json")
                 .addHeader("x-acs-action", "TranslateGeneral")
                 .addHeader("x-acs-version", API_VERSION)
                 .addHeader("x-acs-date", timestamp)
-                .addHeader("x-acs-content-sha256", "UNSIGNED-PAYLOAD")
-                .post(RequestBody.create(requestBody, MediaType.parse("application/json")))
+                .addHeader("x-acs-content-sha256", sha256Hex(jsonBody))
+                .addHeader("x-acs-signature-nonce", nonce)
+                .addHeader("x-acs-signature-version", "ACS3-HMAC-SHA256")
+                .addHeader("Authorization", authorization)
+                .post(RequestBody.create(jsonBody, MediaType.parse("application/json")))
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
@@ -101,11 +114,67 @@ public class AliyunTranslateApi implements TranslateApi {
                 throw new Exception("翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("阿里云翻译响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);
         }
+    }
+
+    private String generateAuthorization(String jsonBody, String timestamp, String nonce) throws Exception {
+        // Step 1: 构建规范请求
+        String httpRequestMethod = "POST";
+        String canonicalUri = "/";
+        String canonicalQueryString = "Action=TranslateGeneral&Version=" + API_VERSION;
+        String canonicalHeaders = "content-type:application/json\n"
+                + "host:" + "mt.cn-hangzhou.aliyuncs.com" + "\n"
+                + "x-acs-action:TranslateGeneral\n"
+                + "x-acs-content-sha256:" + sha256Hex(jsonBody) + "\n"
+                + "x-acs-date:" + timestamp + "\n"
+                + "x-acs-signature-nonce:" + nonce + "\n"
+                + "x-acs-signature-version:ACS3-HMAC-SHA256\n"
+                + "x-acs-version:" + API_VERSION + "\n";
+        String signedHeaders = "content-type;host;x-acs-action;x-acs-content-sha256;x-acs-date;x-acs-signature-nonce;x-acs-signature-version;x-acs-version";
+        String hashedPayload = sha256Hex(jsonBody);
+
+        String canonicalRequest = httpRequestMethod + "\n"
+                + canonicalUri + "\n"
+                + canonicalQueryString + "\n"
+                + canonicalHeaders + "\n"
+                + signedHeaders + "\n"
+                + hashedPayload;
+
+        // Step 2: 构建待签名字符串
+        String stringToSign = "ACS3-HMAC-SHA256\n" + sha256Hex(canonicalRequest);
+
+        // Step 3: 计算签名
+        String signature = hmacSha256Hex(accessKeySecret, stringToSign);
+
+        // Step 4: 构建 Authorization
+        return "ACS3-HMAC-SHA256 Credential=" + accessKeyId
+                + ",SignedHeaders=" + signedHeaders
+                + ",Signature=" + signature;
+    }
+
+    private String sha256Hex(String input) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+        return bytesToHex(digest);
+    }
+
+    private String hmacSha256Hex(String key, String data) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] digest = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+        return bytesToHex(digest);
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b & 0xff));
+        }
+        return sb.toString();
     }
 
     private String convertLanguageCode(String code) {
@@ -129,14 +198,6 @@ public class AliyunTranslateApi implements TranslateApi {
             case "ms": return "ms";
             default: return code;
         }
-    }
-
-    private String escapeJson(String text) {
-        return text.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     private Translation parseResponse(String responseBody, String sourceText, String fromLang, String toLang) throws Exception {

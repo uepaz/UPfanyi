@@ -48,6 +48,7 @@ public class HistoryController implements Initializable {
     private final ObservableList<HistoryRecord> historyList;
     private HistoryRecord selectedRecord;
 
+    private static final int PAGE_SIZE = 200;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public HistoryController() {
@@ -128,7 +129,7 @@ public class HistoryController implements Initializable {
      * 加载历史记录
      */
     private void loadHistory() {
-        List<HistoryRecord> records = historyService.getAllHistory();
+        List<HistoryRecord> records = historyService.getHistoryPage(PAGE_SIZE, 0);
         historyList.clear();
         historyList.addAll(records);
         historyTableView.setItems(historyList);
@@ -171,7 +172,7 @@ public class HistoryController implements Initializable {
     @FXML
     private void handleSearch() {
         String keyword = searchField.getText().trim();
-        List<HistoryRecord> records = historyService.searchHistory(keyword);
+        List<HistoryRecord> records = historyService.searchHistory(keyword, PAGE_SIZE, 0);
         historyList.clear();
         historyList.addAll(records);
         historyTableView.setItems(historyList);

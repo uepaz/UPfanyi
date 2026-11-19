@@ -47,7 +47,18 @@ public class TranslateService {
      * @throws Exception 翻译异常
      */
     public Translation translate(String text, String fromLang, String toLang) throws Exception {
-        return translate(text, fromLang, toLang, appConfig.getDefaultApi());
+        String preferredApiName = appConfig.getDefaultApi();
+        TranslateApi preferredApi = apiFactory.getEnabledApi(preferredApiName);
+        if (preferredApi != null && preferredApi.isConfigured()) {
+            return translate(text, fromLang, toLang, preferredApiName);
+        }
+
+        TranslateApi fallbackApi = apiFactory.getDefaultApi();
+        if (fallbackApi == null) {
+            throw new IllegalStateException("没有启用的翻译API");
+        }
+
+        return translate(text, fromLang, toLang, fallbackApi.getApiName());
     }
 
     /**
@@ -66,6 +77,10 @@ public class TranslateService {
         TranslateApi api = apiFactory.getApi(apiName);
         if (api == null) {
             throw new IllegalArgumentException("未知的翻译API: " + apiName);
+        }
+
+        if (!apiFactory.isApiEnabled(apiName)) {
+            throw new IllegalStateException("翻译API已禁用: " + api.getDisplayName());
         }
 
         if (!api.isConfigured()) {
@@ -100,7 +115,7 @@ public class TranslateService {
      * 获取所有支持的翻译API
      */
     public List<String> getAvailableApis() {
-        return apiFactory.getRegisteredApis();
+        return apiFactory.getAvailableApis();
     }
 
     /**

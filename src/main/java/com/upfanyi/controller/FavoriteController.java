@@ -54,6 +54,7 @@ public class FavoriteController implements Initializable {
     private final ObservableList<FavoriteWord> favoriteList;
     private FavoriteWord selectedWord;
 
+    private static final int PAGE_SIZE = 200;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public FavoriteController() {
@@ -132,7 +133,7 @@ public class FavoriteController implements Initializable {
      * 加载收藏
      */
     private void loadFavorites() {
-        List<FavoriteWord> words = favoriteService.getAllFavorites();
+        List<FavoriteWord> words = favoriteService.getFavoritesPage(PAGE_SIZE, 0);
         favoriteList.clear();
         favoriteList.addAll(words);
         favoriteTableView.setItems(favoriteList);
@@ -177,7 +178,7 @@ public class FavoriteController implements Initializable {
     @FXML
     private void handleSearch() {
         String keyword = searchField.getText().trim();
-        List<FavoriteWord> words = favoriteService.searchFavorites(keyword);
+        List<FavoriteWord> words = favoriteService.searchFavorites(keyword, PAGE_SIZE, 0);
         favoriteList.clear();
         favoriteList.addAll(words);
         favoriteTableView.setItems(favoriteList);

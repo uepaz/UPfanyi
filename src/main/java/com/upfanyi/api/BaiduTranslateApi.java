@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 百度翻译API实现
@@ -37,7 +38,11 @@ public class BaiduTranslateApi implements TranslateApi {
     private String secretKey;
 
     public BaiduTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -81,7 +86,7 @@ public class BaiduTranslateApi implements TranslateApi {
                 throw new Exception("翻译请求失败: " + response.code());
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("百度翻译响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);

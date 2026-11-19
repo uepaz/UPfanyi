@@ -1,12 +1,15 @@
 package com.upfanyi.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.upfanyi.dao.ApiConfigDao;
 import com.upfanyi.model.ApiConfig;
 import com.upfanyi.model.ApiConfigField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +25,15 @@ public class ApiFactory {
     private static final Logger logger = LoggerFactory.getLogger(ApiFactory.class);
 
     private static final ApiFactory instance = new ApiFactory();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final Map<String, TranslateApi> apis;
+    private final Map<String, ApiConfig> apiConfigs;
     private ApiConfigDao apiConfigDao;
 
     private ApiFactory() {
-        apis = new HashMap<>();
+        apis = new LinkedHashMap<>();
+        apiConfigs = new LinkedHashMap<>();
         // 注册默认的API实现
         registerDefaultApis();
     }
@@ -70,7 +76,11 @@ public class ApiFactory {
 
         try {
             List<ApiConfig> configs = apiConfigDao.findAll();
+            apiConfigs.clear();
             for (ApiConfig config : configs) {
+                if (apis.containsKey(config.getApiName())) {
+                    apiConfigs.put(config.getApiName(), config);
+                }
                 configureApi(config);
             }
             logger.info("已加载 {} 个API配置", configs.size());
@@ -91,51 +101,74 @@ public class ApiFactory {
 
         // 使用新的接口方法配置API
         for (ApiConfigField field : api.getConfigFields()) {
-            String value = null;
             String fieldName = field.getFieldName();
+            String value = getConfigValue(config, fieldName);
 
-            // 映射key字段
-            if ("apiKey".equals(fieldName) || "appKey".equals(fieldName) || "appId".equals(fieldName)
-                    || "secretId".equals(fieldName) || "accessKeyId".equals(fieldName)
-                    || "authKey".equals(fieldName) || "subscriptionKey".equals(fieldName)) {
-                value = config.getApiKey();
-            }
-            // 映射secret字段
-            else if ("apiSecret".equals(fieldName) || "secretKey".equals(fieldName) || "appSecret".equals(fieldName)
-                    || "accessKeySecret".equals(fieldName)) {
-                value = config.getApiSecret();
-            }
-            // 其他字段从extraConfig获取
-            else if (config.getExtraConfig() != null && !config.getExtraConfig().isEmpty()) {
-                value = extractFromExtraConfig(config.getExtraConfig(), fieldName);
-            }
-
-            if (value != null) {
-                api.setConfigValue(fieldName, value);
-            }
+            api.setConfigValue(fieldName, value);
         }
 
         logger.info("已配置API: {}", config.getApiName());
     }
 
     /**
+     * 从配置记录中读取字段值，优先使用新的extraConfig完整字段映射，再兼容旧列。
+     */
+    private String getConfigValue(ApiConfig config, String fieldName) {
+        String value = extractFromExtraConfig(config.getExtraConfig(), fieldName);
+        if (value != null) {
+            return value;
+        }
+
+        if (isApiKeyField(fieldName)) {
+            return config.getApiKey();
+        }
+        if (isApiSecretField(fieldName)) {
+            return config.getApiSecret();
+        }
+        if ("endpoint".equals(fieldName)) {
+            return config.getEndpoint();
+        }
+        if ("model".equals(fieldName) || "modelName".equals(fieldName)) {
+            return config.getModelName();
+        }
+
+        return null;
+    }
+
+    /**
      * 从extraConfig JSON中提取字段值
      */
     private String extractFromExtraConfig(String extraConfig, String fieldName) {
-        String key = "\"" + fieldName + "\":";
-        int idx = extraConfig.indexOf(key);
-        if (idx >= 0) {
-            int start = idx + key.length();
-            while (start < extraConfig.length() && (extraConfig.charAt(start) == ' ' || extraConfig.charAt(start) == '"')) {
-                start++;
-            }
-            int end = start;
-            while (end < extraConfig.length() && extraConfig.charAt(end) != '"' && extraConfig.charAt(end) != ',' && extraConfig.charAt(end) != '}') {
-                end++;
-            }
-            return extraConfig.substring(start, end).replace("\"", "").trim();
+        if (extraConfig == null || extraConfig.isEmpty()) {
+            return null;
         }
+
+        try {
+            JsonNode root = objectMapper.readTree(extraConfig);
+            JsonNode value = root.get(fieldName);
+            return value != null && !value.isNull() ? value.asText() : null;
+        } catch (Exception e) {
+            logger.warn("解析API扩展配置失败: {}", e.getMessage());
+        }
+
         return null;
+    }
+
+    private boolean isApiKeyField(String fieldName) {
+        return "apiKey".equals(fieldName)
+                || "appKey".equals(fieldName)
+                || "appId".equals(fieldName)
+                || "secretId".equals(fieldName)
+                || "accessKeyId".equals(fieldName)
+                || "authKey".equals(fieldName)
+                || "subscriptionKey".equals(fieldName);
+    }
+
+    private boolean isApiSecretField(String fieldName) {
+        return "apiSecret".equals(fieldName)
+                || "secretKey".equals(fieldName)
+                || "appSecret".equals(fieldName)
+                || "accessKeySecret".equals(fieldName);
     }
 
     /**
@@ -147,10 +180,23 @@ public class ApiFactory {
     public TranslateApi getApi(String apiName) {
         TranslateApi api = apis.get(apiName);
         if (api == null) {
-            logger.warn("未找到API: {}, 返回默认API", apiName);
-            return apis.get("baidu");
+            logger.warn("未找到API: {}", apiName);
         }
         return api;
+    }
+
+    /**
+     * 获取启用的API实例
+     *
+     * @param apiName API名称
+     * @return 启用的翻译API实例，禁用或不存在时返回null
+     */
+    public TranslateApi getEnabledApi(String apiName) {
+        if (!isApiEnabled(apiName)) {
+            logger.warn("API已禁用: {}", apiName);
+            return null;
+        }
+        return getApi(apiName);
     }
 
     /**
@@ -160,6 +206,24 @@ public class ApiFactory {
      */
     public List<String> getRegisteredApis() {
         return List.copyOf(apis.keySet());
+    }
+
+    /**
+     * 获取已启用的API名称，按数据库priority排序。
+     *
+     * @return 已启用API名称列表
+     */
+    public List<String> getAvailableApis() {
+        return getApisByConfigurationOrder(true);
+    }
+
+    /**
+     * 获取按配置排序的所有API名称。
+     *
+     * @return API名称列表
+     */
+    public List<String> getConfiguredApiOrder() {
+        return getApisByConfigurationOrder(false);
     }
 
     /**
@@ -174,18 +238,58 @@ public class ApiFactory {
     }
 
     /**
+     * 检查API是否已启用。缺少数据库配置的API按启用处理，以兼容旧数据库。
+     *
+     * @param apiName API名称
+     * @return true表示已启用
+     */
+    public boolean isApiEnabled(String apiName) {
+        if (!apis.containsKey(apiName)) {
+            return false;
+        }
+
+        ApiConfig config = apiConfigs.get(apiName);
+        return config == null || config.isEnabled();
+    }
+
+    /**
      * 获取默认API
      *
      * @return 默认翻译API
      */
     public TranslateApi getDefaultApi() {
-        // 优先返回已配置的API
-        for (TranslateApi api : apis.values()) {
+        // 优先返回按priority排序后的已启用且已配置API
+        for (String apiName : getAvailableApis()) {
+            TranslateApi api = apis.get(apiName);
             if (api.isConfigured()) {
                 return api;
             }
         }
-        // 如果都没有配置，返回百度翻译
-        return apis.get("baidu");
+
+        // 如果都没有配置，返回第一个启用API，方便UI提示用户补配置。
+        List<String> availableApis = getAvailableApis();
+        if (!availableApis.isEmpty()) {
+            return apis.get(availableApis.get(0));
+        }
+
+        return null;
+    }
+
+    private List<String> getApisByConfigurationOrder(boolean enabledOnly) {
+        List<String> apiNames = new ArrayList<>();
+
+        for (String apiName : apiConfigs.keySet()) {
+            if (apis.containsKey(apiName) && (!enabledOnly || isApiEnabled(apiName))) {
+                apiNames.add(apiName);
+            }
+        }
+
+        for (String apiName : apis.keySet()) {
+            if (!apiConfigs.containsKey(apiName) && (!enabledOnly || isApiEnabled(apiName))) {
+                apiNames.add(apiName);
+            }
+        }
+
+        return List.copyOf(apiNames);
     }
 }

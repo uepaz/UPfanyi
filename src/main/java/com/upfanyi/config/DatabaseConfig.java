@@ -24,7 +24,6 @@ public class DatabaseConfig {
     private static DatabaseConfig instance;
 
     private String dbPath;
-    private Connection connection;
 
     private DatabaseConfig() {
     }
@@ -46,12 +45,12 @@ public class DatabaseConfig {
             Class.forName("org.sqlite.JDBC");
             logger.info("SQLite驱动加载成功");
 
-            // 创建数据库连接
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
-            logger.info("数据库连接成功: {}", dbPath);
+            try (Connection conn = createConnection()) {
+                logger.info("数据库连接成功: {}", dbPath);
 
-            // 初始化表结构
-            initTables();
+                // 初始化表结构
+                initTables(conn);
+            }
         } catch (ClassNotFoundException e) {
             logger.error("SQLite驱动加载失败", e);
         } catch (SQLException e) {
@@ -62,13 +61,13 @@ public class DatabaseConfig {
     /**
      * 初始化数据库表
      */
-    private void initTables() {
+    private void initTables(Connection conn) {
         try {
             // 读取SQL脚本
             InputStream is = getClass().getResourceAsStream("/db/schema.sql");
             if (is == null) {
                 logger.error("无法找到数据库初始化脚本");
-                createTablesManually();
+                createTablesManually(conn);
                 return;
             }
 
@@ -76,50 +75,90 @@ public class DatabaseConfig {
             is.close();
 
             // 执行SQL
-            Statement stmt = connection.createStatement();
-            String[] statements = sql.split(";");
-            for (String statement : statements) {
-                String trimmed = statement.trim();
-                if (!trimmed.isEmpty()) {
-                    stmt.execute(trimmed);
+            try (Statement stmt = conn.createStatement()) {
+                String[] statements = sql.split(";");
+                for (String statement : statements) {
+                    String trimmed = statement.trim();
+                    if (!trimmed.isEmpty()) {
+                        stmt.execute(trimmed);
+                    }
                 }
             }
-            stmt.close();
             logger.info("数据库表初始化成功");
 
             // 运行数据库迁移
-            runMigrations();
+            runMigrations(conn);
         } catch (IOException e) {
             logger.error("读取SQL脚本失败", e);
-            createTablesManually();
-            runMigrations();
+            createTablesManually(conn);
+            runMigrations(conn);
         } catch (SQLException e) {
             // 如果表已存在，忽略错误
             logger.warn("数据库表初始化警告: {}", e.getMessage());
-            runMigrations();
+            runMigrations(conn);
         }
     }
 
     /**
      * 运行数据库迁移
      */
-    private void runMigrations() {
-        try {
-            Statement stmt = connection.createStatement();
-
+    private void runMigrations(Connection conn) {
+        try (Statement stmt = conn.createStatement()) {
             // 迁移1: 为api_config表添加新列
             addColumnIfNotExists(stmt, "api_config", "endpoint", "VARCHAR(500)");
             addColumnIfNotExists(stmt, "api_config", "model_name", "VARCHAR(100)");
             addColumnIfNotExists(stmt, "api_config", "extra_config", "TEXT");
 
-            // 添加LLM配置记录（如果不存在）
-            stmt.execute("INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('llm', FALSE, 3)");
+            insertDefaultApiConfig(stmt, "baidu", true, 1);
+            insertDefaultApiConfig(stmt, "youdao", true, 2);
+            insertDefaultApiConfig(stmt, "tencent", true, 3);
+            insertDefaultApiConfig(stmt, "aliyun", true, 4);
+            insertDefaultApiConfig(stmt, "deepl", true, 5);
+            insertDefaultApiConfig(stmt, "google", true, 6);
+            insertDefaultApiConfig(stmt, "microsoft", true, 7);
+            insertDefaultApiConfig(stmt, "llm", false, 8);
+            normalizeLegacyDefaultApiPriorities(stmt);
 
-            stmt.close();
             logger.info("数据库迁移完成");
         } catch (SQLException e) {
             logger.warn("数据库迁移警告: {}", e.getMessage());
         }
+    }
+
+    private void insertDefaultApiConfig(Statement stmt, String apiName, boolean enabled, int priority) throws SQLException {
+        String sql = String.format(
+                "INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('%s', %s, %d)",
+                apiName,
+                enabled ? "TRUE" : "FALSE",
+                priority
+        );
+        stmt.execute(sql);
+    }
+
+    private void normalizeLegacyDefaultApiPriorities(Statement stmt) throws SQLException {
+        String legacyLayout = """
+                SELECT COUNT(*) FROM api_config
+                WHERE (api_name = 'baidu' AND priority = 1)
+                   OR (api_name = 'youdao' AND priority = 2)
+                   OR (api_name = 'llm' AND priority = 3)
+                """;
+
+        try (var rs = stmt.executeQuery(legacyLayout)) {
+            if (rs.next() && rs.getInt(1) == 3) {
+                updateApiPriority(stmt, "baidu", 1);
+                updateApiPriority(stmt, "youdao", 2);
+                updateApiPriority(stmt, "tencent", 3);
+                updateApiPriority(stmt, "aliyun", 4);
+                updateApiPriority(stmt, "deepl", 5);
+                updateApiPriority(stmt, "google", 6);
+                updateApiPriority(stmt, "microsoft", 7);
+                updateApiPriority(stmt, "llm", 8);
+            }
+        }
+    }
+
+    private void updateApiPriority(Statement stmt, String apiName, int priority) throws SQLException {
+        stmt.execute("UPDATE api_config SET priority = " + priority + " WHERE api_name = '" + apiName + "'");
     }
 
     /**
@@ -143,10 +182,8 @@ public class DatabaseConfig {
     /**
      * 手动创建数据库表
      */
-    private void createTablesManually() {
-        try {
-            Statement stmt = connection.createStatement();
-
+    private void createTablesManually(Connection conn) {
+        try (Statement stmt = conn.createStatement()) {
             // 历史记录表
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS history (
@@ -192,7 +229,6 @@ public class DatabaseConfig {
                 )
                 """);
 
-            stmt.close();
             logger.info("数据库表创建成功");
         } catch (SQLException e) {
             logger.error("创建数据库表失败", e);
@@ -203,23 +239,20 @@ public class DatabaseConfig {
      * 获取数据库连接
      */
     public Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        if (dbPath == null || dbPath.isBlank()) {
+            throw new SQLException("数据库尚未初始化");
         }
-        return connection;
+        return createConnection();
     }
 
     /**
      * 关闭数据库连接
      */
     public void close() {
-        if (connection != null) {
-            try {
-                connection.close();
-                logger.info("数据库连接已关闭");
-            } catch (SQLException e) {
-                logger.error("关闭数据库连接失败", e);
-            }
-        }
+        logger.debug("数据库连接由调用方按需创建并关闭");
+    }
+
+    private Connection createConnection() throws SQLException {
+        return DriverManager.getConnection("jdbc:sqlite:" + dbPath);
     }
 }

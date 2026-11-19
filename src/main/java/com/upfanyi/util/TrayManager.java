@@ -2,6 +2,7 @@ package com.upfanyi.util;
 
 import com.upfanyi.App;
 import com.upfanyi.config.AppConfig;
+import com.upfanyi.controller.MainController;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -200,15 +201,7 @@ public class TrayManager {
         clipboardItem.setSelected(AppConfig.getInstance().isClipboardMonitor());
         clipboardItem.addItemListener(e -> {
             boolean enabled = e.getStateChange() == ItemEvent.SELECTED;
-            AppConfig.getInstance().setClipboardMonitor(enabled);
-            // 在 JavaFX 线程上启动/停止剪贴板监听
-            Platform.runLater(() -> {
-                if (enabled) {
-                    ClipboardManager.getInstance().startMonitoring(null);
-                } else {
-                    ClipboardManager.getInstance().stopMonitoring();
-                }
-            });
+            Platform.runLater(() -> updateClipboardMonitor(enabled));
         });
         menu.add(clipboardItem);
 
@@ -272,6 +265,37 @@ public class TrayManager {
         menu.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200), 1));
 
         return menu;
+    }
+
+    /**
+     * 从托盘切换剪贴板监听，复用主控制器中的翻译回调。
+     */
+    private void updateClipboardMonitor(boolean enabled) {
+        MainController mainController = getMainController();
+        if (mainController != null) {
+            mainController.updateClipboardMonitor(enabled, AppConfig.getInstance().getClipboardMinLength());
+            return;
+        }
+
+        if (!enabled) {
+            ClipboardManager.getInstance().stopMonitoring();
+        } else {
+            AppConfig.getInstance().setClipboardMonitor(true);
+            AppConfig.getInstance().save();
+            logger.warn("主控制器不可用，无法启动剪贴板翻译监听");
+        }
+    }
+
+    private MainController getMainController() {
+        if (App.getPrimaryStage() == null || App.getPrimaryStage().getScene() == null) {
+            return null;
+        }
+
+        Object controller = App.getPrimaryStage().getScene().getUserData();
+        if (controller instanceof MainController) {
+            return (MainController) controller;
+        }
+        return null;
     }
 
     /**

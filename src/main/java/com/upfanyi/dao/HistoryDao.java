@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,6 +64,31 @@ public class HistoryDao {
     }
 
     /**
+     * 分页查询历史记录
+     */
+    public List<HistoryRecord> findPage(int limit, int offset) {
+        List<HistoryRecord> records = new ArrayList<>();
+        String sql = "SELECT * FROM history ORDER BY create_time DESC LIMIT ? OFFSET ?";
+
+        try (Connection conn = DatabaseConfig.getInstance().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, normalizeLimit(limit));
+            pstmt.setInt(2, normalizeOffset(offset));
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    records.add(mapResultSetToRecord(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("分页查询历史记录失败", e);
+        }
+
+        return records;
+    }
+
+    /**
      * 根据关键词搜索历史记录
      */
     public List<HistoryRecord> search(String keyword) {
@@ -85,6 +109,34 @@ public class HistoryDao {
             }
         } catch (SQLException e) {
             logger.error("搜索历史记录失败", e);
+        }
+
+        return records;
+    }
+
+    /**
+     * 分页搜索历史记录
+     */
+    public List<HistoryRecord> search(String keyword, int limit, int offset) {
+        List<HistoryRecord> records = new ArrayList<>();
+        String sql = "SELECT * FROM history WHERE source_text LIKE ? OR translated_text LIKE ? ORDER BY create_time DESC LIMIT ? OFFSET ?";
+
+        try (Connection conn = DatabaseConfig.getInstance().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            String pattern = "%" + keyword + "%";
+            pstmt.setString(1, pattern);
+            pstmt.setString(2, pattern);
+            pstmt.setInt(3, normalizeLimit(limit));
+            pstmt.setInt(4, normalizeOffset(offset));
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    records.add(mapResultSetToRecord(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("分页搜索历史记录失败", e);
         }
 
         return records;
@@ -156,10 +208,16 @@ public class HistoryDao {
         record.setApiUsed(rs.getString("api_used"));
 
         String createTimeStr = rs.getString("create_time");
-        if (createTimeStr != null) {
-            record.setCreateTime(LocalDateTime.parse(createTimeStr));
-        }
+        record.setCreateTime(DaoTimeUtil.parseLocalDateTime(createTimeStr));
 
         return record;
+    }
+
+    private int normalizeLimit(int limit) {
+        return limit > 0 ? limit : 100;
+    }
+
+    private int normalizeOffset(int offset) {
+        return Math.max(offset, 0);
     }
 }

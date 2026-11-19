@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,6 +62,31 @@ public class FavoriteDao {
     }
 
     /**
+     * 分页查询收藏
+     */
+    public List<FavoriteWord> findPage(int limit, int offset) {
+        List<FavoriteWord> words = new ArrayList<>();
+        String sql = "SELECT * FROM favorites ORDER BY create_time DESC LIMIT ? OFFSET ?";
+
+        try (Connection conn = DatabaseConfig.getInstance().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, normalizeLimit(limit));
+            pstmt.setInt(2, normalizeOffset(offset));
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    words.add(mapResultSetToWord(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("分页查询收藏失败", e);
+        }
+
+        return words;
+    }
+
+    /**
      * 根据单词查找
      */
     public FavoriteWord findByWord(String word) {
@@ -107,6 +131,35 @@ public class FavoriteDao {
             }
         } catch (SQLException e) {
             logger.error("搜索收藏失败", e);
+        }
+
+        return words;
+    }
+
+    /**
+     * 分页搜索收藏
+     */
+    public List<FavoriteWord> search(String keyword, int limit, int offset) {
+        List<FavoriteWord> words = new ArrayList<>();
+        String sql = "SELECT * FROM favorites WHERE word LIKE ? OR translation LIKE ? OR note LIKE ? ORDER BY create_time DESC LIMIT ? OFFSET ?";
+
+        try (Connection conn = DatabaseConfig.getInstance().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            String pattern = "%" + keyword + "%";
+            pstmt.setString(1, pattern);
+            pstmt.setString(2, pattern);
+            pstmt.setString(3, pattern);
+            pstmt.setInt(4, normalizeLimit(limit));
+            pstmt.setInt(5, normalizeOffset(offset));
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    words.add(mapResultSetToWord(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("分页搜索收藏失败", e);
         }
 
         return words;
@@ -200,10 +253,16 @@ public class FavoriteDao {
         word.setNote(rs.getString("note"));
 
         String createTimeStr = rs.getString("create_time");
-        if (createTimeStr != null) {
-            word.setCreateTime(LocalDateTime.parse(createTimeStr));
-        }
+        word.setCreateTime(DaoTimeUtil.parseLocalDateTime(createTimeStr));
 
         return word;
+    }
+
+    private int normalizeLimit(int limit) {
+        return limit > 0 ? limit : 100;
+    }
+
+    private int normalizeOffset(int offset) {
+        return Math.max(offset, 0);
     }
 }

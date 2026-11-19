@@ -2,20 +2,26 @@ package com.upfanyi.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.upfanyi.model.ApiConfigField;
 import com.upfanyi.model.Translation;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 腾讯翻译君API实现
@@ -43,7 +49,11 @@ public class TencentTranslateApi implements TranslateApi {
     private String secretKey;
 
     public TencentTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -69,53 +79,44 @@ public class TencentTranslateApi implements TranslateApi {
 
         logger.debug("腾讯翻译: {} -> {}, 文本: {}", fromLang, toLang, text);
 
-        // 构建请求参数
+        String source = convertLanguageCode(fromLang);
+        String target = convertLanguageCode(toLang);
+
+        // 使用 Jackson 构建 JSON 请求体
+        ObjectNode bodyNode = objectMapper.createObjectNode();
+        bodyNode.put("SourceText", text);
+        bodyNode.put("Source", source);
+        bodyNode.put("Target", target);
+        bodyNode.put("ProjectId", 0);
+        String jsonBody = objectMapper.writeValueAsString(bodyNode);
+
         String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
-        String payload = buildPayload(text, fromLang, toLang);
 
-        // 生成签名
-        String authorization = generateAuthorization(payload, timestamp);
-
-        // 构建请求URL
-        String url = "https://" + HOST + "?" + payload;
+        // 生成 TC3-HMAC-SHA256 签名
+        String authorization = generateAuthorization(jsonBody, timestamp);
 
         Request request = new Request.Builder()
-                .url(url)
+                .url("https://" + HOST)
                 .addHeader("Authorization", authorization)
                 .addHeader("X-TC-Timestamp", timestamp)
+                .addHeader("X-TC-Action", ACTION)
                 .addHeader("X-TC-Version", "2018-03-21")
                 .addHeader("X-TC-Region", REGION)
-                .addHeader("Host", HOST)
-                .addHeader("Content-Type", "application/json")
-                .get()
+                .addHeader("Content-Type", "application/json; charset=utf-8")
+                .post(RequestBody.create(jsonBody, MediaType.parse("application/json; charset=utf-8")))
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                throw new Exception("翻译请求失败: " + response.code());
+                String errorBody = response.body() != null ? response.body().string() : "Unknown error";
+                throw new Exception("翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("腾讯翻译响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);
         }
-    }
-
-    private String buildPayload(String text, String fromLang, String toLang) throws Exception {
-        // 腾讯翻译语言代码转换
-        String source = convertLanguageCode(fromLang);
-        String target = convertLanguageCode(toLang);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Action=").append(ACTION);
-        sb.append("&Version=2018-03-21");
-        sb.append("&Region=").append(REGION);
-        sb.append("&Source=").append(source);
-        sb.append("&Target=").append(target);
-        sb.append("&SourceText=").append(URLEncoder.encode(text, StandardCharsets.UTF_8));
-        sb.append("&ProjectId=0");
-        return sb.toString();
     }
 
     private String convertLanguageCode(String code) {
@@ -141,26 +142,29 @@ public class TencentTranslateApi implements TranslateApi {
         }
     }
 
-    private String generateAuthorization(String payload, String timestamp) throws Exception {
+    private String generateAuthorization(String jsonBody, String timestamp) throws Exception {
         String algorithm = "TC3-HMAC-SHA256";
-        String date = java.time.LocalDate.now().toString();
+        String date = Instant.ofEpochSecond(Long.parseLong(timestamp))
+                .atZone(ZoneOffset.UTC)
+                .toLocalDate()
+                .format(DateTimeFormatter.ISO_LOCAL_DATE);
 
-        // Step 1: 拼接规范请求串
-        String httpRequestMethod = "GET";
+        // Step 1: 构建规范请求（POST，无 query string）
+        String httpRequestMethod = "POST";
         String canonicalUri = "/";
-        String canonicalQueryString = payload;
-        String canonicalHeaders = "content-type:application/json\nhost:" + HOST + "\n";
+        String canonicalQueryString = "";
+        String canonicalHeaders = "content-type:application/json; charset=utf-8\nhost:" + HOST + "\n";
         String signedHeaders = "content-type;host";
-        String hashedRequestPayload = sha256Hex("");
+        String hashedPayload = sha256Hex(jsonBody);
 
         String canonicalRequest = httpRequestMethod + "\n"
                 + canonicalUri + "\n"
                 + canonicalQueryString + "\n"
                 + canonicalHeaders + "\n"
                 + signedHeaders + "\n"
-                + hashedRequestPayload;
+                + hashedPayload;
 
-        // Step 2: 拼接待签名字符串
+        // Step 2: 构建待签名字符串
         String credentialScope = date + "/" + SERVICE + "/tc3_request";
         String hashedCanonicalRequest = sha256Hex(canonicalRequest);
         String stringToSign = algorithm + "\n"
@@ -175,12 +179,10 @@ public class TencentTranslateApi implements TranslateApi {
         String signature = bytesToHex(hmacSha256(secretSigning, stringToSign));
 
         // Step 4: 拼接 Authorization
-        String authorization = algorithm + " "
+        return algorithm + " "
                 + "Credential=" + secretId + "/" + credentialScope + ", "
                 + "SignedHeaders=" + signedHeaders + ", "
                 + "Signature=" + signature;
-
-        return authorization;
     }
 
     private String sha256Hex(String input) throws Exception {

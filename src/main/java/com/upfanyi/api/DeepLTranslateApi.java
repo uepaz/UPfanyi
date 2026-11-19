@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * DeepL翻译API实现
@@ -41,20 +42,28 @@ public class DeepLTranslateApi implements TranslateApi {
     private boolean usePro = false;
 
     public DeepLTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
     public DeepLTranslateApi(String authKey) {
         this();
         this.authKey = authKey;
-        // 根据authKey判断是否为Pro版本（Pro版本key以特定前缀开头）
-        this.usePro = authKey != null && !authKey.startsWith("free:");
+        this.usePro = !isFreeKey(authKey);
     }
 
     public void setAuthKey(String authKey) {
         this.authKey = authKey;
-        this.usePro = authKey != null && !authKey.startsWith("free:");
+        this.usePro = !isFreeKey(authKey);
+    }
+
+    private boolean isFreeKey(String key) {
+        // DeepL Free key 以 ":fx" 结尾
+        return key != null && key.endsWith(":fx");
     }
 
     @Override
@@ -69,7 +78,8 @@ public class DeepLTranslateApi implements TranslateApi {
 
         // 构建请求体
         ObjectNode requestBody = objectMapper.createObjectNode();
-        requestBody.put("text", text);
+        ArrayNode texts = requestBody.putArray("text");
+        texts.add(text);
 
         // DeepL语言代码
         String sourceLang = convertSourceLanguageCode(fromLang);
@@ -96,7 +106,7 @@ public class DeepLTranslateApi implements TranslateApi {
                 throw new Exception("DeepL翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("DeepL响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);

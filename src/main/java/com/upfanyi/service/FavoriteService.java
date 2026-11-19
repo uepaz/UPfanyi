@@ -76,6 +76,13 @@ public class FavoriteService {
     }
 
     /**
+     * 分页获取收藏
+     */
+    public List<FavoriteWord> getFavoritesPage(int limit, int offset) {
+        return favoriteDao.findPage(limit, offset);
+    }
+
+    /**
      * 搜索收藏
      */
     public List<FavoriteWord> searchFavorites(String keyword) {
@@ -83,6 +90,16 @@ public class FavoriteService {
             return getAllFavorites();
         }
         return favoriteDao.search(keyword.trim());
+    }
+
+    /**
+     * 分页搜索收藏
+     */
+    public List<FavoriteWord> searchFavorites(String keyword, int limit, int offset) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return getFavoritesPage(limit, offset);
+        }
+        return favoriteDao.search(keyword.trim(), limit, offset);
     }
 
     /**

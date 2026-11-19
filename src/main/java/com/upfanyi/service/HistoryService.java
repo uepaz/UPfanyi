@@ -37,6 +37,13 @@ public class HistoryService {
     }
 
     /**
+     * 分页获取历史记录
+     */
+    public List<HistoryRecord> getHistoryPage(int limit, int offset) {
+        return historyDao.findPage(limit, offset);
+    }
+
+    /**
      * 搜索历史记录
      */
     public List<HistoryRecord> searchHistory(String keyword) {
@@ -44,6 +51,16 @@ public class HistoryService {
             return getAllHistory();
         }
         return historyDao.search(keyword.trim());
+    }
+
+    /**
+     * 分页搜索历史记录
+     */
+    public List<HistoryRecord> searchHistory(String keyword, int limit, int offset) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return getHistoryPage(limit, offset);
+        }
+        return historyDao.search(keyword.trim(), limit, offset);
     }
 
     /**

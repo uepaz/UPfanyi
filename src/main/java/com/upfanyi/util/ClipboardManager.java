@@ -26,10 +26,10 @@ public class ClipboardManager {
 
     private final Clipboard clipboard;
     private String lastContent;
-    private boolean isMonitoring = false;
+    private volatile boolean isMonitoring = false;
     private Thread monitorThread;
     private Consumer<String> onTextCopied;
-    private int minTextLength = 1;
+    private volatile int minTextLength = 1;
 
     private ClipboardManager() {
         this.clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
@@ -48,6 +48,10 @@ public class ClipboardManager {
      * @param onTextCopied 文本复制回调
      */
     public void startMonitoring(Consumer<String> onTextCopied) {
+        if (onTextCopied != null) {
+            this.onTextCopied = onTextCopied;
+        }
+
         if (isMonitoring) {
             logger.warn("剪贴板监听已在运行");
             return;
@@ -120,8 +124,9 @@ public class ClipboardManager {
      * 设置最小文本长度
      */
     public void setMinTextLength(int length) {
-        this.minTextLength = length;
-        AppConfig.getInstance().setClipboardMinLength(length);
+        int safeLength = Math.max(1, length);
+        this.minTextLength = safeLength;
+        AppConfig.getInstance().setClipboardMinLength(safeLength);
     }
 
     /**

@@ -14,6 +14,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Google Translate API实现
@@ -36,7 +37,11 @@ public class GoogleTranslateApi implements TranslateApi {
     private String apiKey;
 
     public GoogleTranslateApi() {
-        this.httpClient = new OkHttpClient();
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -83,7 +88,7 @@ public class GoogleTranslateApi implements TranslateApi {
                 throw new Exception("Google翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("Google翻译响应: {}", responseBody);
 
             return parseResponse(responseBody, text, fromLang, toLang);

@@ -136,7 +136,7 @@ public class LLMTranslateApi implements TranslateApi {
                 throw new Exception("LLM翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("OpenAI响应: {}", responseBody);
 
             return parseOpenAIResponse(responseBody);
@@ -181,7 +181,7 @@ public class LLMTranslateApi implements TranslateApi {
                 throw new Exception("Ollama翻译请求失败: " + response.code() + " - " + errorBody);
             }
 
-            String responseBody = response.body().string();
+            String responseBody = response.body() != null ? response.body().string() : "";
             logger.debug("Ollama响应: {}", responseBody);
 
             return parseOllamaResponse(responseBody);
@@ -246,9 +246,20 @@ public class LLMTranslateApi implements TranslateApi {
 
     @Override
     public boolean isConfigured() {
-        // OpenAI需要端点和模型，API Key可选（某些兼容服务不需要）
-        // Ollama需要端点和模型
-        return endpoint != null && !endpoint.isEmpty() && model != null && !model.isEmpty();
+        if (!hasText(endpoint) || !hasText(model)) {
+            return false;
+        }
+
+        if (apiType == ApiType.LLM_OLLAMA) {
+            return true;
+        }
+
+        // 默认OpenAI端点必须有API Key；其他OpenAI兼容服务允许无鉴权。
+        return hasText(apiKey) || !DEFAULT_OPENAI_ENDPOINT.equals(endpoint.trim());
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     @Override
@@ -281,7 +292,7 @@ public class LLMTranslateApi implements TranslateApi {
     public void setConfigValue(String fieldName, String value) {
         switch (fieldName) {
             case "apiType":
-                this.apiType = "ollama".equalsIgnoreCase(value) ? ApiType.LLM_OLLAMA : ApiType.LLM_OPENAI;
+                setApiType("ollama".equalsIgnoreCase(value) ? ApiType.LLM_OLLAMA : ApiType.LLM_OPENAI);
                 break;
             case "endpoint":
                 this.endpoint = value;

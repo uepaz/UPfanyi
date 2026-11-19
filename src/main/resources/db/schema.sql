@@ -44,7 +44,12 @@ CREATE TABLE IF NOT EXISTS api_config (
 -- 插入默认API配置
 INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('baidu', TRUE, 1);
 INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('youdao', TRUE, 2);
-INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('llm', FALSE, 3);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('tencent', TRUE, 3);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('aliyun', TRUE, 4);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('deepl', TRUE, 5);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('google', TRUE, 6);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('microsoft', TRUE, 7);
+INSERT OR IGNORE INTO api_config (api_name, is_enabled, priority) VALUES ('llm', FALSE, 8);
 
 -- 应用设置表
 CREATE TABLE IF NOT EXISTS settings (
