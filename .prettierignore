@@ -1,0 +1,15 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock
+pnpm-lock.yaml
+.task-artifacts/
+.agents/
+.idea/
+.claude/
+CLAUDE.md
+.github/java-upgrade/
+.github/modernize/
+openspec/

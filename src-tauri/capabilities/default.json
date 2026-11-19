@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "主窗口使用事件接收与集中Rust命令；系统操作由Rust提供。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

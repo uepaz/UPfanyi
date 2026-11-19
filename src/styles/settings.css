@@ -1,0 +1,245 @@
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-sections {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+.settings-sections button {
+  padding: 8px 13px;
+  background: transparent;
+  color: #5e7390;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.settings-sections button.active {
+  background: #eaf0f9;
+  color: var(--navy);
+  font-weight: 600;
+}
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.settings-scroll {
+  padding: 0 4px 8px 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  flex: 1;
+}
+.settings-card {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.settings-card > h2 {
+  margin-bottom: 18px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.form-grid > .toggle-label {
+  align-self: end;
+  min-height: 42px;
+}
+.desktop-shortcuts {
+  margin-top: 18px;
+}
+.ai-config-form {
+  min-width: 0;
+}
+.ai-config-form h2 {
+  margin-bottom: 8px;
+}
+.ai-state {
+  font-size: 12px;
+  color: #387256;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+}
+.ai-state.incomplete {
+  color: #86682b;
+}
+.ai-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ai-channel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.ai-channel-row .official-website {
+  min-width: 0;
+  padding-top: 28px;
+}
+.ai-channel-row input {
+  min-height: 42px;
+}
+.channel-actions {
+  display: flex;
+  gap: 8px;
+}
+.channel-actions .channel-delete {
+  color: #ad4141;
+}
+.channel-name-dialog h2 {
+  margin-bottom: 18px;
+}
+.channel-name-dialog .confirmation-actions {
+  margin-top: 20px;
+}
+.channel-name-error {
+  color: #ad4141;
+  font-size: 13px;
+  margin-top: 10px;
+}
+.official-website-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  background: #edf3fc;
+  color: #365a92;
+  font-size: 13px;
+}
+.official-website-button:hover:not(:disabled) {
+  background: #e2ebf9;
+}
+.official-website .notice {
+  margin-top: 10px;
+}
+.secret-input {
+  position: relative;
+}
+.secret-input input {
+  padding-right: 43px;
+}
+.secret-input .icon-button {
+  position: absolute;
+  right: 3px;
+  top: 4px;
+}
+.model-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.model-input input {
+  flex: 1;
+  min-width: 0;
+}
+.model-input .button {
+  flex-shrink: 0;
+}
+.test-connection {
+  margin-top: 18px;
+}
+.ai-config-form .notice {
+  margin-top: 16px;
+}
+.security-note {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 12px;
+}
+.data-info {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 20px 0 8px;
+}
+.data-info summary {
+  cursor: pointer;
+}
+.data-info code {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.settings-footer {
+  padding: 14px 0 0;
+  background: #f5f7fa;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.settings-feedback {
+  max-height: 120px;
+  overflow: auto;
+}
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.shortcut-recorder {
+  min-width: 0;
+}
+.shortcut-recorder-control {
+  position: relative;
+}
+.shortcut-recorder input {
+  padding-right: 115px;
+  cursor: pointer;
+  caret-color: transparent;
+  text-overflow: ellipsis;
+}
+.shortcut-recorder.recording input {
+  border-color: #6487c5;
+  background: #f6f9ff;
+  box-shadow: 0 0 0 3px #eaf0fa;
+}
+.shortcut-recorder-badge {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.shortcut-recorder.recording .shortcut-recorder-badge {
+  color: var(--navy);
+}
+.shortcut-recorder-status {
+  display: block;
+  min-height: 17px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.shortcut-recorder-status.invalid {
+  color: #ad4141;
+}
+@media (max-width: 680px) {
+  .settings-card {
+    padding: 16px;
+  }
+  .form-grid {
+    gap: 14px;
+  }
+  .ai-channel-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .ai-channel-row .official-website {
+    padding-top: 0;
+  }
+}

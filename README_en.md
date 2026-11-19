@@ -1,217 +1,48 @@
-<p align="right">
-  <a href="README.md"><strong>中文</strong></a> | English
-</p>
+# UPfanyi
 
----
+[中文](README.md)
 
-# UP Translator
+A Windows AI translation app built with Tauri 2, Vue 3, TypeScript and Rust. Includes LLM translation, history, vocabulary/favorites, configurable global shortcuts, selected-text translation, a system tray, and Chinese/English UI.
 
-<div align="center">
+## Development
 
-A desktop translation tool built with JavaFX, supporting multiple translation engines for a seamless translation experience.
+Use Node.js 24, pnpm 11, Rust 1.94+ with the MSVC toolchain, Visual Studio desktop C++ tools and Windows SDK, and WebView2. Node and pnpm versions are recorded in `.node-version` and `package.json`; CI uses Rust 1.94.0. Both dependency lockfiles are checked in.
 
-[![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://openjdk.java.net/)
-[![JavaFX](https://img.shields.io/badge/JavaFX-17+-red.svg)](https://openjfx.io/)
-[![Maven](https://img.shields.io/badge/Maven-3.6+-orange.svg)](https://maven.apache.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/yourusername/upfanyi/actions/workflows/maven-build.yml/badge.svg)](https://github.com/yourusername/upfanyi/actions/workflows/maven-build.yml)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-
-[Quick Start](#quick-start) • [Features](#features) • [Usage](#usage) • [Contributing](#contributing) • [Roadmap](#roadmap)
-
-</div>
-
----
-
-## Features
-
-- ✅ **Multiple Translation Engines** - Baidu, Youdao, DeepL, Google, Tencent, Alibaba, Microsoft
-- ✅ **Clipboard Monitoring** - Auto-translate on copy
-- ✅ **Global Hotkeys** - Custom shortcuts to show window
-- ✅ **History** - Automatically save translation records
-- ✅ **Favorites** - Save frequently used translations
-- ✅ **System Tray** - Minimize to system tray
-- ✅ **Always on Top** - Keep window on top
-- ✅ **Bilingual UI** - Chinese and English interface support
-
----
-
-## Tech Stack
-
-- **Language**: Java 17+
-- **UI Framework**: JavaFX 17+
-- **Build Tool**: Maven
-- **Database**: SQLite
-- **HTTP Client**: OkHttp
-- **JSON Parsing**: Jackson
-- **Logging**: SLF4J + Logback
-
----
-
-## Quick Start
-
-### Requirements
-
-- JDK 17 or higher
-- Maven 3.6+
-
-### Build & Run
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/upfanyi.git
-cd upfanyi
-
-# Compile the project
-mvn clean compile
-
-# Run the application
-mvn javafx:run
+```powershell
+pnpm install --frozen-lockfile
+pnpm desktop:dev
 ```
 
-### Package & Distribute
+Build the Windows executable and NSIS installer:
 
-```bash
-# Package as executable JAR
-mvn clean package
-
-# Run the JAR
-java -jar target/upfanyi-1.0.0.jar
+```powershell
+pnpm desktop:build
 ```
 
----
+Outputs: `src-tauri/target/release/upfanyi.exe` and `src-tauri/target/release/bundle/nsis/`. `pnpm dev` only previews the browser UI; data, translation, and system actions require the desktop runtime.
 
-## Usage
+## AI configuration and data
 
-### Configure Translation APIs
+A fresh first launch has only one built-in channel, “UPfanyi official AI” at https://uptoken.top, using Chat Completions with an empty key and model. The official channel is fixed and shows a Visit official website action on its right. For any other service, choose “Add channel” and enter a unique name. Added channels can be renamed or deleted and display an editable service address. Each channel retains its address, protocol/API, key, model and prompt. Switching preserves drafts; Save settings persists all channels and the active selection together, while Cancel restores all saved values. Channel, protocol, API and language selectors share styled keyboard-accessible popups; editable model choices support filtering and manual entry.
 
-Before using the translation features, you need to configure your API credentials.
+The settings keep separate protocol and API selectors. OpenAI-compatible is the only protocol, and the API can be Chat Completions or Responses. Enter only the service domain, such as `relay.example.com` or `https://relay.example.com`; bare domains use HTTPS. To use local Ollama, manually add a channel named `ollama`, choose Chat Completions, and enter `http://localhost:11434`. A default local server can use a blank key. Enter any required API key, then use the model field below the key to fetch, search, select, or manually enter a model. Official OpenAI endpoints require a key; custom and local services can omit it. An optional system prompt controls translation instructions.
 
-<details>
-<summary><strong>Baidu Translate API</strong></summary>
+Model discovery runs only when clicked and uses the unsaved draft, as does the separate connection test. Neither writes settings or history. Empty lists and failures preserve the current model; a listed model is not a guarantee of API support. Paths are generated automatically: OpenAI Chat uses `/v1/chat/completions`, Responses uses `/v1/responses`, and discovery uses `/v1/models`. Base URLs ending in `/v1` are accepted without duplication, preserving proxy prefixes, ports and queries. Recognized full API URLs also remain usable; for special full paths with no known model-list route, enter the model manually. Responses requests are non-streaming with `store: false`; refusals and incomplete responses do not become successful translations. Results and history show the model used. Real credentials, quotas and model availability require service-specific testing.
 
-1. Visit [Baidu Translate Open Platform](https://fanyi-api.baidu.com/)
-2. Register and create an application
-3. Get App ID and Secret Key
-4. Enter credentials in the app settings
+The named-channel edition uses a new native format, usually `%APPDATA%\com.upfanyi.desktop\data-v3\upfanyi.sqlite3` on Windows. The UI displays the actual directory. A new data-v3 starts with empty history and favorites, default preferences and only the official channel. Subsequent launches retain data-v3 records. The app does not discover, read, migrate or delete data-v2 or earlier files. Preferences and the complete channel collection share SQLite. Credentials are stored locally in plaintext; do not share the database.
 
-</details>
+For isolated development, set `UPFANYI_DATA_DIR` to a dedicated root; the app creates `data-v3/upfanyi.sqlite3` underneath it. Existing native databases must pass identity, version and schema checks; unsupported formats produce an error without automatic replacement. The previous version is preserved on the `legacy/java-v1` branch; inspect it in a separate directory to protect the current working tree.
 
-<details>
-<summary><strong>Youdao Translate API</strong></summary>
+Default global shortcuts are `Ctrl+Shift+T` to show the window and `Ctrl+Shift+C` to translate selected text. Select text in another window and press and release the shortcut. The app copies the selection before opening the translation window, and does nothing if no new text is copied. Ordinary copying or cutting does not start a translation; `Ctrl+C` is reserved for copying. In Desktop and shortcuts, click a shortcut field and press the new combination. Esc cancels recording and Tab leaves the field. Save settings applies the draft and checks conflicts.
 
-1. Visit [Youdao AI Cloud](https://ai.youdao.com/)
-2. Register and create an application
-3. Get App Key and App Secret
-4. Enter credentials in the app settings
+## Checks and documentation
 
-</details>
-
-<details>
-<summary><strong>DeepL API</strong></summary>
-
-1. Visit [DeepL API Pro](https://www.deepl.com/pro-api)
-2. Register and get API Key
-3. Enter API Key in the app settings
-
-</details>
-
-<details>
-<summary><strong>Tencent Translate API</strong></summary>
-
-1. Visit [Tencent Interactive Translation](https://fanyi.qq.com/)
-2. Register and get SecretId and SecretKey
-3. Enter credentials in the app settings
-
-</details>
-
-<details>
-<summary><strong>Alibaba Cloud Translate API</strong></summary>
-
-1. Visit [Alibaba Cloud Machine Translation](https://www.aliyun.com/product/mt)
-2. Register and get AccessKeyId and AccessKeySecret
-3. Enter credentials in the app settings
-
-</details>
-
-### Keyboard Shortcuts
-
-| Shortcut | Function |
-|----------|----------|
-| `Ctrl+Shift+T` | Show/Hide translation window |
-| `Ctrl+Shift+C` | Translate clipboard content |
-| `Enter` | Translate input text |
-
----
-
-## Project Structure
-
-```
-UPfanyi/
-├── src/main/java/com/upfanyi/
-│   ├── App.java                 # Application entry point
-│   ├── Launcher.java            # JAR launcher
-│   ├── api/                     # Translation API implementations
-│   ├── config/                  # Configuration management
-│   ├── controller/              # FXML controllers
-│   ├── dao/                     # Data access layer
-│   ├── model/                   # Data models
-│   ├── service/                 # Business logic services
-│   ├── util/                    # Utility classes
-│   └── view/                    # View management
-├── src/main/resources/
-│   ├── css/                     # Stylesheets
-│   ├── db/                      # Database schemas
-│   ├── fxml/                    # FXML layouts
-│   ├── i18n/                    # Internationalization bundles
-│   └── images/                  # Image assets
-└── pom.xml                      # Maven configuration
+```powershell
+pnpm verify
 ```
 
----
+`verify` checks lint, formatting, types, frontend production output, frontend/Rust tests, Rust fmt and Clippy. Tests use mock IPC, temporary databases, and local HTTP servers, without real translation credentials. Windows CI runs these checks and builds the installer. Individual commands are defined in `package.json`.
 
-## Roadmap
+General preferences contain interface language and always-on-top controls; translation language and automatic translation remain on the translation page. The UI offers first-use AI configuration, grouped settings with drafts preserved across navigation, and per-record vocabulary note drafts. Suggested follow-up work includes configuration guidance, secret storage and backup/restore, terminology, streaming output, OCR, and vocabulary review.
 
-- [ ] Support more translation engines
-- [ ] Image translation with OCR
-- [ ] PDF document translation
-- [ ] Cloud synchronization
-- [ ] Browser extension
-
----
-
-## Contributing
-
-Issues and Pull Requests are welcome!
-
-### Guidelines
-
-1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## Contact
-
-- **Project Homepage**: https://github.com/uepaz/upfanyi
-- **Issues**: https://github.com/uepaz/upfanyi/issues
-- **Email**: 2182557729@qq.com
-
----
-
-<div align="center">
-
-Made with ❤️ by uepaz
-
-⭐ If this project helps you, please give a Star!
-
-</div>
+License: [MIT](LICENSE).

@@ -1,0 +1,132 @@
+.app-shell {
+  display: flex;
+  height: 100vh;
+  min-height: 600px;
+}
+.sidebar {
+  width: 172px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 12px 18px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+.brand-symbol {
+  background: var(--navy);
+  color: white;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+}
+.brand strong {
+  font-size: 17px;
+  white-space: nowrap;
+}
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 30px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 14px;
+  background: transparent;
+  color: #536881;
+  font-size: 14px;
+  text-align: left;
+  border-radius: 7px;
+}
+.nav-item:hover {
+  background: var(--soft);
+}
+.nav-item.active {
+  background: #eaf0f9;
+  color: var(--navy);
+  font-weight: 600;
+}
+.sidebar-footer {
+  margin-top: auto;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 16px 8px 0;
+}
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workspace-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 24px;
+}
+.startup-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  max-width: 650px;
+  margin: auto;
+  text-align: center;
+}
+.startup-state p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.startup-state .notice {
+  margin: 0;
+}
+.startup-icon {
+  width: 64px;
+  height: 64px;
+  background: #e7eef8;
+  color: var(--navy);
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+}
+@media (max-width: 850px) {
+  .sidebar {
+    width: 64px;
+    padding: 24px 9px 18px;
+  }
+  .brand {
+    justify-content: center;
+    padding: 0;
+  }
+  .brand strong,
+  .sidebar-footer {
+    display: none;
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 12px;
+  }
+  .nav-item > span {
+    display: none;
+  }
+}
+@media (max-width: 680px) {
+  .workspace-content {
+    padding: 20px 16px;
+  }
+}

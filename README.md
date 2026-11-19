@@ -1,255 +1,61 @@
-<p align="right">
-  <a href="README_en.md"><strong>English</strong></a> | 中文
-</p>
+# UP翻译
 
----
+[English](README_en.md)
 
-# UP 翻译
+Windows AI 翻译工具，使用 Tauri 2、Vue 3、TypeScript 与 Rust。支持大模型翻译、历史记录、收藏/生词本、全局快捷键、选中文字快捷翻译、托盘和中英文界面。
 
-<div align="center">
+## 运行与构建
 
-一款基于 JavaFX 开发的桌面翻译工具，支持多种翻译引擎，提供便捷的翻译体验。
+开发环境：Node.js 24、pnpm 11、Rust 1.94+ MSVC 工具链、Visual Studio C++ 桌面开发工具及 Windows SDK、WebView2。Node 与 pnpm 版本见 `.node-version`、`package.json`；依赖版本由两个锁文件固定，CI 固定 Rust 1.94.0。
 
-[![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://openjdk.java.net/)
-[![JavaFX](https://img.shields.io/badge/JavaFX-17+-red.svg)](https://openjfx.io/)
-[![Maven](https://img.shields.io/badge/Maven-3.6+-orange.svg)](https://maven.apache.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/yourusername/upfanyi/actions/workflows/maven-build.yml/badge.svg)](https://github.com/yourusername/upfanyi/actions/workflows/maven-build.yml)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-
-[快速开始](#快速开始) • [功能特性](#功能特性) • [使用方法](#使用方法) • [参与贡献](#参与贡献) • [开发计划](#开发计划)
-
-</div>
-
----
-
-## 功能特性
-
-- ✅ **多翻译引擎支持** - 百度、有道、DeepL、Google、腾讯、阿里、微软等
-- ✅ **剪贴板监听** - 复制文本后自动翻译
-- ✅ **全局快捷键** - 自定义快捷键唤起窗口
-- ✅ **历史记录** - 自动保存翻译历史
-- ✅ **收藏/生词本** - 收藏常用翻译内容
-- ✅ **系统托盘** - 最小化到系统托盘
-- ✅ **窗口置顶** - 窗口可置顶显示
-- ✅ **中英双语** - 支持中英文界面切换
-
----
-
-## 技术栈
-
-- **语言**: Java 17+
-- **UI 框架**: JavaFX 17+
-- **构建工具**: Maven
-- **数据库**: SQLite
-- **HTTP 客户端**: OkHttp
-- **JSON 解析**: Jackson
-- **日志**: SLF4J + Logback
-
----
-
-## 快速开始
-
-### 环境要求
-
-- JDK 17 或更高版本
-- Maven 3.6+
-
-### 编译运行
-
-```bash
-# 克隆项目
-git clone https://github.com/yourusername/upfanyi.git
-cd upfanyi
-
-# 编译项目
-mvn clean compile
-
-# 运行项目
-mvn javafx:run
+```powershell
+pnpm install --frozen-lockfile
+pnpm desktop:dev
 ```
 
-### 打包发布
+Windows 打包：
 
-```bash
-# 打包为可执行 JAR
-mvn clean package
-
-# 运行 JAR
-java -jar target/upfanyi-1.0.0.jar
+```powershell
+pnpm desktop:build
 ```
 
----
+可执行程序位于 `src-tauri/target/release/upfanyi.exe`，NSIS 安装包位于 `src-tauri/target/release/bundle/nsis/`。
 
-## 使用方法
+`pnpm dev` 仅启动浏览器预览；翻译、数据库和系统操作需要桌面运行环境，浏览器中会显示提示。
 
-### 配置翻译 API
+## 使用
 
-在使用翻译功能之前，需要配置翻译 API 的密钥。
+首次启动仅预置并默认使用“UP翻译官方 AI”（https://uptoken.top），接口为 Chat Completions，密钥和模型需填写。官方渠道固定保留，右侧显示“访问官方网站”入口。非官方服务一律从“添加渠道”创建，填写不重名的名称；新增渠道可重命名、删除，右侧填写服务地址。每个渠道分别保存地址、协议/接口、密钥、模型和提示词。切换渠道保留本轮草稿，点击“保存设置”统一保存全部渠道和当前选择；“取消”恢复全部已保存内容。渠道、协议、接口及语言选择框采用统一弹层，支持键盘选择；模型使用同样式的可编辑候选弹层，支持筛选和手填。
 
-<details>
-<summary><strong>百度翻译 API</strong></summary>
+第一次使用时，打开 AI 配置，在顶部选择协议类型与接口类型：协议类型仅提供 OpenAI 兼容，右侧接口类型可选 Chat Completions 或 Responses。服务地址只需填写中转域名，例如 `relay.example.com` 或 `https://relay.example.com`，裸域名默认 HTTPS；连接本机 Ollama 时，可手动添加名为 `ollama` 的普通渠道，选择 Chat Completions，填写 `http://localhost:11434`；默认本机服务可留空密钥。填写所需密钥后，在密钥下方点击“获取模型”，搜索选择或直接手填模型名称。支持自定义系统提示词。偏好页提供界面语言与窗口置顶，语言和自动翻译在翻译页操作。设置分为偏好、AI 翻译和桌面快捷键，切换页面保留草稿，取消才丢弃修改。Enter 翻译，Shift+Enter 换行；自动翻译采用输入防抖，只有最新请求更新当前结果。
 
-1. 访问 [百度翻译开放平台](https://fanyi-api.baidu.com/)
-2. 注册并创建应用
-3. 获取 App ID 和 Secret Key
-4. 在应用设置中填入密钥
+历史支持搜索、分页、重用和删除；收藏支持备注、搜索和 UTF-8 文本导出。默认快捷键为 `Ctrl+Shift+T` 显示窗口、`Ctrl+Shift+C` 翻译选中文字。在其它窗口选中文字后按下并松开快捷键，应用先复制选区，再弹出窗口翻译。没有复制到新文本时不翻译。普通复制和剪切不会触发翻译，`Ctrl+C` 保留给复制。在“桌面与快捷键”中点击对应输入框，再按下组合键即可修改草稿；Esc 取消录制，Tab 离开，点击“保存设置”后生效并检查冲突。启用“关闭到托盘”后，点击窗口关闭按钮隐藏窗口，通过托盘恢复或退出。
 
-</details>
+用户渠道按服务要求填写密钥；官方 OpenAI 地址必须提供密钥。模型列表和连接测试使用当前草稿，不保存配置或历史。模型列表只在点击时获取，空列表或失败不会清空已填模型；列表不保证模型支持所选接口，可另行测试连接。结果与历史显示实际模型；真实认证、额度和模型可用性需用对应账户验证。
 
-<details>
-<summary><strong>有道翻译 API</strong></summary>
+程序根据所选接口自动补路径：OpenAI Chat 使用 `/v1/chat/completions`，Responses 使用 `/v1/responses`，模型列表使用 `/v1/models`。可填带 `/v1` 的基础地址，支持代理前缀、端口和查询参数，不重复拼接版本路径。已填可识别的完整接口地址仍可使用；特殊完整路径无法推导模型列表时继续手填。Responses 使用非流式文本请求，显式发送 `store: false`，拒绝或未完成响应不会保存为成功翻译。
 
-1. 访问 [有道智云](https://ai.youdao.com/)
-2. 注册并创建应用
-3. 获取 App Key 和 App Secret
-4. 在应用设置中填入密钥
+## 本地数据
 
-</details>
+当前命名渠道版本使用独立原生格式，Windows 默认路径通常为 `%APPDATA%\com.upfanyi.desktop\data-v3\upfanyi.sqlite3`，实际目录在设置页显示。首次建立 data-v3 时设置、渠道、历史和收藏从空白开始，仅预置官方渠道；后续启动保留 data-v3 的记录。应用不探测、读取、迁移或删除 data-v2 及更早版本文件。偏好和完整渠道集合统一保存在 SQLite。
 
-<details>
-<summary><strong>DeepL API</strong></summary>
+测试时使用专用目录，避免读取真实数据：
 
-1. 访问 [DeepL API Pro](https://www.deepl.com/pro-api)
-2. 注册并获取 API Key
-3. 在应用设置中填入密钥
-
-</details>
-
-<details>
-<summary><strong>腾讯翻译 API</strong></summary>
-
-1. 访问 [腾讯交互翻译](https://fanyi.qq.com/)
-2. 注册并获取 SecretId 和 SecretKey
-3. 在应用设置中填入密钥
-
-</details>
-
-<details>
-<summary><strong>阿里云翻译 API</strong></summary>
-
-1. 访问 [阿里云机器翻译](https://www.aliyun.com/product/mt)
-2. 注册并获取 AccessKeyId 和 AccessKeySecret
-3. 在应用设置中填入密钥
-
-</details>
-
-### 快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl+Shift+T` | 显示/隐藏翻译窗口 |
-| `Ctrl+Shift+C` | 翻译剪贴板内容 |
-| `Enter` | 翻译输入的文本 |
-
----
-
-## 项目结构
-
-```
-UPfanyi/
-├── src/main/java/com/upfanyi/
-│   ├── App.java                 # 应用入口
-│   ├── Launcher.java            # JAR 启动器
-│   ├── api/                     # 翻译 API 实现
-│   ├── config/                  # 配置管理
-│   ├── controller/              # 控制器
-│   ├── dao/                     # 数据访问层
-│   ├── model/                   # 数据模型
-│   ├── service/                 # 业务服务层
-│   ├── util/                    # 工具类
-│   └── view/                    # 视图管理
-├── src/main/resources/
-│   ├── css/                     # 样式文件
-│   ├── db/                      # 数据库脚本
-│   ├── fxml/                    # FXML 布局
-│   ├── i18n/                    # 国际化资源
-│   └── images/                  # 图片资源
-└── pom.xml                      # Maven 配置
+```powershell
+$env:UPFANYI_DATA_DIR = Join-Path $PWD '.task-artifacts\dev-data'
+pnpm desktop:dev
 ```
 
----
+应用在指定根目录下创建 `data-v3/upfanyi.sqlite3`。凭据以明文保存在本地 SQLite，勿提交或分享数据库。已有原生数据库必须通过标识、版本、结构和配置检查，格式不匹配时会报错，应用不会自动覆盖。旧版本源码保存在 `legacy/java-v1` 分支，需要查阅时使用单独目录，避免覆盖当前工作区。
 
-## 开发计划
+## 验证
 
-- [ ] 支持更多翻译引擎
-- [ ] 图片翻译（OCR）
-- [ ] PDF 文档翻译
-- [ ] 云端同步功能
-- [ ] 浏览器插件版本
+```powershell
+pnpm verify
+```
 
----
+`verify` 包含格式、lint、类型、前端与 Rust 测试、前端生产构建，以及 Rust fmt 和 Clippy。前端测试使用 mock IPC；Rust 使用临时 SQLite 和本地 HTTP 服务。离线测试不调用真实翻译服务。分项命令见 `package.json`。
 
-## 贡献
+后续建议优先完善 AI 配置体验、密钥保护与备份恢复，再考虑术语库、流式翻译、截图 OCR 和收藏复习。
 
-欢迎提交 Issue 和 Pull Request！
-
-### 提交指南
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
----
-
-## 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
-
----
-
-## 联系方式
-
-- **项目主页**: https://github.com/uepaz/upfanyi
-- **问题反馈**: https://github.com/uepaz/upfanyi/issues
-- **邮箱**: 2182557729@qq.com
-
----
-
-## 致谢
-
-感谢以下开源项目：
-- [JavaFX](https://openjfx.io/) - UI 框架
-- [OkHttp](https://square.github.io/okhttp/) - HTTP 客户端
-- [Jackson](https://github.com/FasterXML/jackson) - JSON 解析
-- [SQLite](https://www.sqlite.org/) - 嵌入式数据库
-- [Logback](https://logback.qos.ch/) - 日志框架
-- [JNativeHook](https://github.com/kwhat/jnativehook) - 全局快捷键
-
----
-
-## 赞助
-
-如果这个项目对你有帮助，欢迎通过以下方式支持：
-
-- ⭐ 给项目一个 Star
-- 🔗 分享给需要的朋友
-- 🐛 报告 Bug 或提交 PR
-
----
-
-## 常见问题
-
-### Q: 为什么翻译不工作？
-
-A: 请确保你已经正确配置了翻译 API 的密钥。不同的 API 有不同的使用限制，建议阅读对应平台的文档。
-
-### Q: 如何更改界面语言？
-
-A: 在设置页面可以切换界面语言。如果没有生效，请重启应用。
-
-### Q: 支持离线翻译吗？
-
-A: 当前版本不支持离线翻译。所有翻译都需要网络连接来调用翻译 API。
-
----
-
-<div align="center">
-
-Made with ❤️ by uepaz
-
-⭐ 如果这个项目对你有帮助，请给一个 Star！
-
-</div>
+许可证：[MIT](LICENSE)。
