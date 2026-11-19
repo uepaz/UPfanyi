@@ -1,48 +1,82 @@
-# UPfanyi
+<p align="right"><a href="README.md">简体中文</a> · English</p>
 
-[中文](README.md)
+<p align="center"><img src="src-tauri/icons/128x128.png" width="72" height="72" alt="" /></p>
 
-A Windows AI translation app built with Tauri 2, Vue 3, TypeScript and Rust. Includes LLM translation, history, vocabulary/favorites, configurable global shortcuts, selected-text translation, a system tray, and Chinese/English UI.
+<h1 align="center">UP Translate</h1>
 
-## Development
+<p align="center">An AI translator for Windows. Select a passage on a web page or in a document and press a shortcut to read the translation beside your pointer.</p>
 
-Use Node.js 24, pnpm 11, Rust 1.94+ with the MSVC toolchain, Visual Studio desktop C++ tools and Windows SDK, and WebView2. Node and pnpm versions are recorded in `.node-version` and `package.json`; CI uses Rust 1.94.0. Both dependency lockfiles are checked in.
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#keyboard-shortcuts">Keyboard shortcuts</a> ·
+  <a href="#common-questions">Common questions</a>
+</p>
+
+## Features
+
+- **Read alongside the original.** Pin the popup to keep it in view. When the translation finishes, use the copy icon to copy it. To try different wording, expand **View original**, edit the text, and click the translate icon.
+- **Translate longer passages.** Type or paste text into the main window and press `Enter` to see the translation appear as the model writes it. Turn on **Auto translate** to start after a pause in typing. The main window and popup share your target language and remember it between sessions.
+- **Choose your AI service.** Switch between the built-in channel and your own providers. Each channel remembers its model, API key, and system prompt.
+- **Keep useful translations.** Search **History** to revisit a translation or choose **Translate again** to keep working on it. Click the star beside a result in the main window to add it to your **Wordbook**, where you can write notes or export entries as a text file.
+
+## Quick start
+
+### Install on Windows
+
+On 64-bit Windows, run `UPfanyi_2.0.0_x64-setup.exe` and follow the installer. If the releases page only lists 1.x, you can build the installer from the 2.0 source using the steps below. [View published releases](https://github.com/uepaz/UPfanyi/releases)
+
+<details>
+<summary>Build the Windows installer from the 2.0 source</summary>
+
+Install Node.js 24, pnpm 11, Rust 1.94 or later with the MSVC toolchain, the Visual Studio Desktop development with C++ workload, the Windows SDK, and WebView2. From the project root, run these commands.
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm desktop:dev
-```
-
-Build the Windows executable and NSIS installer:
-
-```powershell
 pnpm desktop:build
 ```
 
-Outputs: `src-tauri/target/release/upfanyi.exe` and `src-tauri/target/release/bundle/nsis/`. `pnpm dev` only previews the browser UI; data, translation, and system actions require the desktop runtime.
+The installer is written to `src-tauri/target/release/bundle/nsis/`. Run `pnpm verify` to check the code and run the tests.
 
-## AI configuration and data
+</details>
 
-A fresh first launch has only one built-in channel, “UPfanyi official AI” at https://uptoken.top, using Chat Completions with an empty key and model. The official channel is fixed and shows a Visit official website action on its right. For any other service, choose “Add channel” and enter a unique name. Added channels can be renamed or deleted and display an editable service address. Each channel retains its address, protocol/API, key, model and prompt. Switching preserves drafts; Save settings persists all channels and the active selection together, while Cancel restores all saved values. Channel, protocol, API and language selectors share styled keyboard-accessible popups; editable model choices support filtering and manual entry.
+### Your first translation
 
-The settings keep separate protocol and API selectors. OpenAI-compatible is the only protocol, and the API can be Chat Completions or Responses. Enter only the service domain, such as `relay.example.com` or `https://relay.example.com`; bare domains use HTTPS. To use local Ollama, manually add a channel named `ollama`, choose Chat Completions, and enter `http://localhost:11434`. A default local server can use a blank key. Enter any required API key, then use the model field below the key to fetch, search, select, or manually enter a model. Official OpenAI endpoints require a key; custom and local services can omit it. An optional system prompt controls translation instructions.
+The interface starts in Simplified Chinese. To switch to English, open **设置 → 偏好**, set **界面语言** to **English**, and click **保存设置**.
 
-Model discovery runs only when clicked and uses the unsaved draft, as does the separate connection test. Neither writes settings or history. Empty lists and failures preserve the current model; a listed model is not a guarantee of API support. Paths are generated automatically: OpenAI Chat uses `/v1/chat/completions`, Responses uses `/v1/responses`, and discovery uses `/v1/models`. Base URLs ending in `/v1` are accepted without duplication, preserving proxy prefixes, ports and queries. Recognized full API URLs also remain usable; for special full paths with no known model-list route, enter the model manually. Responses requests are non-streaming with `store: false`; refusals and incomplete responses do not become successful translations. Results and history show the model used. Real credentials, quotas and model availability require service-specific testing.
+1. Open **Settings → AI translation**. **UPfanyi official AI** is selected on first launch. Enter the API key for that channel. [Visit the official website](https://uptoken.top)
+2. Click **Get models** and choose an available model, or enter its name manually.
+3. You can use **Test connection** to check the configuration. Click **Save settings** to apply it.
+4. Select a sentence in a web page or document. Press and release `Ctrl+Shift+C` to see its translation in a popup beside your pointer.
 
-The named-channel edition uses a new native format, usually `%APPDATA%\com.upfanyi.desktop\data-v3\upfanyi.sqlite3` on Windows. The UI displays the actual directory. A new data-v3 starts with empty history and favorites, default preferences and only the official channel. Subsequent launches retain data-v3 records. The app does not discover, read, migrate or delete data-v2 or earlier files. Preferences and the complete channel collection share SQLite. Credentials are stored locally in plaintext; do not share the database.
+## Keyboard shortcuts
 
-For isolated development, set `UPFANYI_DATA_DIR` to a dedicated root; the app creates `data-v3/upfanyi.sqlite3` underneath it. Existing native databases must pass identity, version and schema checks; unsupported formats produce an error without automatic replacement. The previous version is preserved on the `legacy/java-v1` branch; inspect it in a separate directory to protect the current working tree.
+| Default shortcut | Action                                                              |
+| ---------------- | ------------------------------------------------------------------- |
+| `Ctrl+Shift+C`   | Translate the selected text                                         |
+| `Ctrl+Shift+T`   | Show the main window                                                |
+| `Enter`          | Translate the text in the main window’s source field                |
+| `Shift+Enter`    | Insert a new line in the source field                               |
+| `Esc`            | Dismiss the popup. If a language list is open, close the list first |
 
-Default global shortcuts are `Ctrl+Shift+T` to show the window and `Ctrl+Shift+C` to translate selected text. Select text in another window and press and release the shortcut. The app copies the selection before opening the translation window, and does nothing if no new text is copied. Ordinary copying or cutting does not start a translation; `Ctrl+C` is reserved for copying. In Desktop and shortcuts, click a shortcut field and press the new combination. Esc cancels recording and Tab leaves the field. Save settings applies the draft and checks conflicts.
+To change either global shortcut, open **Settings → Desktop & shortcuts**, click its field, press the new key combination, and select **Save settings**.
 
-## Checks and documentation
+## Common questions
 
-```powershell
-pnpm verify
-```
+### How do I use my own AI service?
 
-`verify` checks lint, formatting, types, frontend production output, frontend/Rust tests, Rust fmt and Clippy. Tests use mock IPC, temporary databases, and local HTTP servers, without real translation credentials. Windows CI runs these checks and builds the installer. Individual commands are defined in `package.json`.
+Under **Settings → AI translation**, open the channel list, choose **Add channel**, and give it a name. For the service address, enter the domain, such as `relay.example.com`. Choose the OpenAI-compatible API your service supports, either `Chat Completions` or `Responses`. Enter a key if required, choose a model, and save. If the service doesn't list its models, enter the model ID from your provider and click **Test connection**.
 
-General preferences contain interface language and always-on-top controls; translation language and automatic translation remain on the translation page. The UI offers first-use AI configuration, grouped settings with drafts preserved across navigation, and per-record vocabulary note drafts. Suggested follow-up work includes configuration guidance, secret storage and backup/restore, terminology, streaming output, OCR, and vocabulary review.
+### Can I translate selected text after closing the main window?
 
-License: [MIT](LICENSE).
+By default, closing the main window sends the app to the system tray. The selection shortcut remains available. To quit the app, choose **Exit** from the tray menu.
+
+### Where do my text and API keys go?
+
+The app sends the source text to your selected AI service for translation. History, wordbook entries, and settings are stored on your computer. Open **Local data directory** at the bottom of **Settings** to see the location. The database stores API keys in plain text, so keep it and any backups private.
+
+## Feedback and license
+
+Ideas for future versions include glossaries, translating text from screenshots, and wordbook review. Share how you would use these features or report a problem on [GitHub Issues](https://github.com/uepaz/UPfanyi/issues).
+
+This project uses the [MIT License](LICENSE).
